@@ -66,6 +66,20 @@ ollama pull qwen3.5:9b
 deep-researcher "applications of transformer models in structural health monitoring"
 ```
 
+### Unlock all 8 databases (optional, free)
+
+Deep Researcher works out of the box with 5 databases (arXiv, Semantic Scholar, OpenAlex, CrossRef, PubMed). To also search Scopus, IEEE Xplore, and CORE, register for free API keys and add them to `~/.deep-researcher/config.json`:
+
+```json
+{
+  "scopus_api_key": "your-key-from-dev.elsevier.com",
+  "ieee_api_key": "your-key-from-developer.ieee.org",
+  "core_api_key": "your-key-from-core.ac.uk"
+}
+```
+
+These are free, personal API keys that give you access to publisher metadata and abstracts (not full text). Each takes about 2 minutes to register. Scopus alone adds 90M+ records from Elsevier, Springer, Wiley, ASCE, and more.
+
 ### Run with any provider (one flag)
 
 ```bash
@@ -298,7 +312,10 @@ Create `~/.deep-researcher/config.json`:
   "base_url": "http://localhost:11434/v1",
   "api_key": "ollama",
   "email": "you@university.edu",
-  "output_dir": "~/research/output"
+  "output_dir": "~/research/output",
+  "scopus_api_key": "your-scopus-key",
+  "ieee_api_key": "your-ieee-key",
+  "core_api_key": "your-core-key"
 }
 ```
 
