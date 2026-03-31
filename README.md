@@ -21,31 +21,36 @@
 
 ---
 
-Most "AI research tools" do a web search and summarize. Deep Researcher does what an actual researcher does: **searches multiple academic databases, reads abstracts, follows citation chains, refines search queries based on findings, and only writes up when it has enough material.**
+Most "AI research tools" search the web and write you a story. Deep Researcher does what an actual researcher does: **searches academic databases (including paywalled publishers), reads abstracts, follows citation chains, and builds a structured corpus before writing anything.**
 
 It runs a real agentic loop where the LLM decides what to search next, when to dig deeper, and when to stop. Not a pipeline. Not a single prompt. An autonomous research agent.
 
 **3 dependencies. ~1,500 lines. No LangChain.**
 
 > [!NOTE]
-> Deep Researcher searches **real academic databases** (Semantic Scholar, OpenAlex, arXiv, CrossRef, PubMed, CORE, Scopus, IEEE Xplore), not the open web. It finds papers from both open access and paywalled sources (abstracts and metadata are always available). No hallucinated sources.
+> Deep Researcher searches **real academic databases** (Semantic Scholar, OpenAlex, arXiv, CrossRef, PubMed, CORE, Scopus, IEEE Xplore), not the open web. It accesses both open access and paywalled sources through their free APIs (abstracts and metadata are always available, no subscription needed). Every paper it finds actually exists. No hallucinated sources.
 
 ---
 
 ## Why This Exists
 
-Existing tools like GPT Researcher and STORM are powerful but rely on **general web search**. Great for current events, but not for academic research. They miss the databases that matter: Semantic Scholar, OpenAlex, CrossRef, PubMed. They can't follow citation chains. They don't output BibTeX.
+Existing tools like GPT Researcher, STORM, Gemini Deep Research, and ChatGPT all rely on **web search**. They write you a narrative essay with a few citations sprinkled in. That's useful for a quick overview, but not for an actual literature review.
 
-Deep Researcher was built for **academics, grad students, and researchers** who need:
+The problem: most published research lives behind publisher paywalls (Elsevier, Springer, IEEE, ASCE, Wiley). Web search tools can't see it. They only find what's freely indexed on the open web.
 
-- Proper coverage across real academic databases, including paywalled sources (not just Google)
+Deep Researcher takes a different approach: **gather a comprehensive corpus first, then categorize and synthesize.** It searches both open and paywalled academic databases (abstracts and metadata are freely available), follows citation chains, deduplicates across sources, and produces a structured analysis of everything it finds.
+
+Built for **academics, grad students, and researchers** who need:
+
+- **Comprehensive coverage** across 8 academic databases, including paywalled publishers via Scopus and IEEE
+- **Literature gathering first, storytelling second.** Every paper found, categorized, and cited.
 - Citation chains to find foundational and recent work
-- BibTeX output they can actually import into LaTeX/Overleaf
+- BibTeX output ready for LaTeX/Overleaf
 - Open access detection for paywalled papers
 - A tool they can run **100% locally** with their own models
 
 > [!TIP]
-> Unlike Gemini or ChatGPT deep research, Deep Researcher doesn't give you a history lesson. It **categorizes papers, synthesizes across groups, and identifies gaps**, like Connected Papers but with analysis.
+> Unlike Gemini or ChatGPT deep research, Deep Researcher doesn't give you a narrative with a few sources. It builds a **complete paper corpus**, categorizes by theme, synthesizes across groups, and identifies gaps. Think Connected Papers + automated analysis.
 
 ---
 
@@ -66,19 +71,38 @@ ollama pull qwen3.5:9b
 deep-researcher "applications of transformer models in structural health monitoring"
 ```
 
-### Unlock all 8 databases (optional, free)
+### Unlock paywalled databases (recommended)
 
-Deep Researcher works out of the box with 5 databases (arXiv, Semantic Scholar, OpenAlex, CrossRef, PubMed). To also search Scopus, IEEE Xplore, and CORE, register for free API keys and add them to `~/.deep-researcher/config.json`:
+Deep Researcher works out of the box with 5 open databases. But most research tools stop there, missing the majority of published academic work that lives behind publisher paywalls.
+
+**The key insight:** you don't need full text to do a literature review. Abstracts, citation counts, and metadata from Scopus and IEEE Xplore are enough to identify relevant work, and these are available for free through their APIs.
+
+| Database | What it adds | Registration |
+|---|---|---|
+| **Scopus** (Elsevier) | 90M+ records from Elsevier, Springer, Wiley, ASCE, IEEE, ACM. The largest abstract database in academia. | [dev.elsevier.com](https://dev.elsevier.com/) |
+| **IEEE Xplore** | 6M+ IEEE/IET journal and conference papers. Essential for engineering and CS. | [developer.ieee.org](https://developer.ieee.org/) |
+| **CORE** | 300M+ open access articles with full text links. | [core.ac.uk/api-keys/register](https://core.ac.uk/api-keys/register) |
+
+**How to set up (5 minutes, all free):**
+
+1. **Scopus**: Go to [dev.elsevier.com](https://dev.elsevier.com/) > Create account > "My API Key" > Create. You get a key instantly. No institutional affiliation required. Free tier gives 20,000 searches/week.
+
+2. **IEEE Xplore**: Go to [developer.ieee.org](https://developer.ieee.org/) > Register > Request API key. Free tier gives 200 calls/day.
+
+3. **CORE** (optional): Go to [core.ac.uk/api-keys/register](https://core.ac.uk/api-keys/register) > Register > Get key.
+
+4. **Save your keys** in `~/.deep-researcher/config.json`:
 
 ```json
 {
-  "scopus_api_key": "your-key-from-dev.elsevier.com",
-  "ieee_api_key": "your-key-from-developer.ieee.org",
-  "core_api_key": "your-key-from-core.ac.uk"
+  "scopus_api_key": "your-scopus-key",
+  "ieee_api_key": "your-ieee-key",
+  "core_api_key": "your-core-key"
 }
 ```
 
-These are free, personal API keys that give you access to publisher metadata and abstracts (not full text). Each takes about 2 minutes to register. Scopus alone adds 90M+ records from Elsevier, Springer, Wiley, ASCE, and more.
+> [!TIP]
+> **Scopus is the most impactful addition.** It indexes nearly every major publisher, so even one key dramatically increases coverage. For a topic like "structural health monitoring," Scopus will find ASCE, Springer, and Elsevier journal papers that open databases miss entirely.
 
 ### Run with any provider (one flag)
 
