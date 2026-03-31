@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import re
+import time
 import xml.etree.ElementTree as ET
 
 import httpx
 
-from deep_researcher.models import Paper
+from deep_researcher.models import Paper, ToolResult, clean_abstract
 from deep_researcher.tools.base import Tool
 
 EUTILS_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
+
+_RETRIABLE_STATUSES = {429, 500, 502, 503}
 
 
 class PubMedSearchTool(Tool):
@@ -29,39 +33,54 @@ class PubMedSearchTool(Tool):
         "required": ["query"],
     }
 
-    def execute(self, query: str, max_results: int = 10) -> str:
+    def execute(self, query: str, max_results: int = 10) -> ToolResult:
         max_results = min(max_results, 20)
 
         try:
-            search_resp = httpx.get(
-                f"{EUTILS_BASE}/esearch.fcgi",
-                params={"db": "pubmed", "term": query, "retmax": max_results, "retmode": "json"},
-                timeout=30,
-            )
-            search_resp.raise_for_status()
+            resp = None
+            for attempt in range(3):
+                resp = httpx.get(
+                    f"{EUTILS_BASE}/esearch.fcgi",
+                    params={"db": "pubmed", "term": query, "retmax": max_results, "retmode": "json"},
+                    timeout=30,
+                )
+                if resp.status_code in _RETRIABLE_STATUSES:
+                    time.sleep(2 ** (attempt + 1))
+                    continue
+                break
+            resp.raise_for_status()
         except httpx.HTTPError as e:
-            return f"Error searching PubMed: {e}"
+            return ToolResult(text=f"Error searching PubMed: {e}")
 
-        search_data = search_resp.json()
+        search_data = resp.json()
         id_list = search_data.get("esearchresult", {}).get("idlist", [])
         if not id_list:
-            return "No papers found on PubMed for this query."
+            return ToolResult(text="No papers found on PubMed for this query.")
 
         try:
-            fetch_resp = httpx.get(
-                f"{EUTILS_BASE}/efetch.fcgi",
-                params={"db": "pubmed", "id": ",".join(id_list), "retmode": "xml"},
-                timeout=30,
-            )
-            fetch_resp.raise_for_status()
+            resp = None
+            for attempt in range(3):
+                resp = httpx.get(
+                    f"{EUTILS_BASE}/efetch.fcgi",
+                    params={"db": "pubmed", "id": ",".join(id_list), "retmode": "xml"},
+                    timeout=30,
+                )
+                if resp.status_code in _RETRIABLE_STATUSES:
+                    time.sleep(2 ** (attempt + 1))
+                    continue
+                break
+            resp.raise_for_status()
         except httpx.HTTPError as e:
-            return f"Error fetching PubMed details: {e}"
+            return ToolResult(text=f"Error fetching PubMed details: {e}")
 
-        papers = _parse_pubmed_xml(fetch_resp.text)
+        papers = _parse_pubmed_xml(resp.text)
+        if not papers:
+            return ToolResult(text="No papers found on PubMed for this query.")
+
         lines = [f"Found {len(papers)} papers on PubMed:\n"]
         for i, p in enumerate(papers, 1):
             lines.append(f"{i}. {p.to_summary()}\n")
-        return "\n".join(lines)
+        return ToolResult(text="\n".join(lines), papers=papers)
 
 
 def _parse_pubmed_xml(xml_text: str) -> list[Paper]:
@@ -81,8 +100,18 @@ def _parse_pubmed_xml(xml_text: str) -> list[Paper]:
         if not title:
             continue
 
-        abstract_el = article_el.find(".//Abstract/AbstractText")
-        abstract = _get_text(abstract_el)
+        # Collect ALL AbstractText elements (structured abstracts have multiple)
+        abstract_parts = []
+        for abs_el in article_el.findall(".//Abstract/AbstractText"):
+            label = abs_el.get("Label")
+            text = _get_text(abs_el)
+            if text:
+                if label:
+                    abstract_parts.append(f"{label}: {text}")
+                else:
+                    abstract_parts.append(text)
+        raw_abstract = " ".join(abstract_parts) if abstract_parts else None
+        abstract = clean_abstract(raw_abstract)
 
         authors = []
         for author_el in article_el.findall(".//AuthorList/Author"):
@@ -100,6 +129,14 @@ def _parse_pubmed_xml(xml_text: str) -> list[Paper]:
             except ValueError:
                 pass
 
+        # MedlineDate fallback (e.g. "2023 Jan-Feb" or "2023 Spring")
+        if year is None:
+            medline_date_el = article_el.find(".//Journal/JournalIssue/PubDate/MedlineDate")
+            if medline_date_el is not None and medline_date_el.text:
+                match = re.match(r"(\d{4})", medline_date_el.text)
+                if match:
+                    year = int(match.group(1))
+
         journal_el = article_el.find(".//Journal/Title")
         journal = _get_text(journal_el)
 
@@ -112,6 +149,8 @@ def _parse_pubmed_xml(xml_text: str) -> list[Paper]:
                 doi = id_el.text
                 break
 
+        url = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/" if pmid else None
+
         papers.append(
             Paper(
                 title=title,
@@ -119,7 +158,7 @@ def _parse_pubmed_xml(xml_text: str) -> list[Paper]:
                 year=year,
                 abstract=abstract,
                 doi=doi,
-                url=f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/" if pmid else None,
+                url=url,
                 source="pubmed",
                 journal=journal,
                 pmid=pmid,

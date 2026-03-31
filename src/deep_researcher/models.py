@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import html
 import re
 from dataclasses import dataclass, field
 
@@ -19,13 +20,47 @@ class Paper:
     arxiv_id: str | None = None
     pmid: str | None = None
     open_access_url: str | None = None
+    keywords: list[str] = field(default_factory=list)
+    volume: str | None = None
+    pages: str | None = None
+    publisher: str | None = None
 
     @property
     def unique_key(self) -> str:
         if self.doi:
-            return f"doi:{self.doi.lower()}"
+            return f"doi:{self.doi.lower().strip()}"
+        if self.arxiv_id:
+            return f"arxiv:{self.arxiv_id.lower().strip()}"
+        if self.pmid:
+            return f"pmid:{self.pmid.strip()}"
         normalized = re.sub(r"\s+", " ", self.title.lower().strip())
-        return f"title:{hashlib.md5(normalized.encode()).hexdigest()}"
+        return f"title:{hashlib.sha256(normalized.encode()).hexdigest()[:16]}"
+
+    def merge(self, other: Paper) -> None:
+        """Merge metadata from another Paper representing the same work."""
+        if not self.abstract and other.abstract:
+            self.abstract = other.abstract
+        if not self.doi and other.doi:
+            self.doi = other.doi
+        if not self.url and other.url:
+            self.url = other.url
+        if other.citation_count is not None:
+            if self.citation_count is None or other.citation_count > self.citation_count:
+                self.citation_count = other.citation_count
+        if not self.journal and other.journal:
+            self.journal = other.journal
+        if not self.arxiv_id and other.arxiv_id:
+            self.arxiv_id = other.arxiv_id
+        if not self.pmid and other.pmid:
+            self.pmid = other.pmid
+        if not self.open_access_url and other.open_access_url:
+            self.open_access_url = other.open_access_url
+        if not self.year and other.year:
+            self.year = other.year
+        if not self.authors and other.authors:
+            self.authors = other.authors
+        if other.source and other.source not in self.source:
+            self.source = f"{self.source},{other.source}"
 
     def to_summary(self) -> str:
         parts = [f"**{self.title}**"]
@@ -43,34 +78,87 @@ class Paper:
         if self.doi:
             parts.append(f"DOI: {self.doi}")
         if self.abstract:
-            abstract = self.abstract[:300]
-            if len(self.abstract) > 300:
-                abstract += "..."
+            abstract = self.abstract
+            if len(abstract) > 300:
+                cut = abstract[:320].rfind(". ")
+                abstract = abstract[: cut + 1] if cut > 200 else abstract[:300] + "..."
             parts.append(f"Abstract: {abstract}")
         if self.open_access_url:
             parts.append(f"Open Access: {self.open_access_url}")
         return "\n".join(parts)
 
     def to_bibtex(self) -> str:
-        if self.authors:
-            first_author_last = self.authors[0].split()[-1].lower()
+        if self.doi:
+            key = re.sub(r"[^a-zA-Z0-9]", "_", self.doi)
         else:
-            first_author_last = "unknown"
-        year = self.year or "nd"
-        title_word = re.sub(r"[^a-z]", "", self.title.split()[0].lower()) if self.title else "untitled"
-        key = f"{first_author_last}{year}{title_word}"
+            author_part = "unknown"
+            if self.authors:
+                parts = self.authors[0].split()
+                author_part = parts[-1].lower() if parts else "unknown"
+            year_part = str(self.year) if self.year else "nd"
+            title_part = ""
+            if self.title and self.title.split():
+                title_part = re.sub(r"[^a-z]", "", self.title.split()[0].lower())
+            key = f"{author_part}{year_part}{title_part}"
 
-        lines = [f"@article{{{key},"]
-        lines.append(f'  title = {{{self.title}}},')
+        entry_type = "article" if self.journal else "misc"
+        lines = [f"@{entry_type}{{{key},"]
+        lines.append(f"  title = {{{_bib_escape(self.title)}}},")
         if self.authors:
-            lines.append(f'  author = {{{" and ".join(self.authors)}}},')
+            lines.append(f"  author = {{{' and '.join(_bib_escape(a) for a in self.authors)}}},")
         if self.year:
             lines.append(f"  year = {{{self.year}}},")
         if self.journal:
-            lines.append(f'  journal = {{{self.journal}}},')
+            lines.append(f"  journal = {{{_bib_escape(self.journal)}}},")
+        if self.volume:
+            lines.append(f"  volume = {{{self.volume}}},")
+        if self.pages:
+            lines.append(f"  pages = {{{self.pages}}},")
+        if self.publisher:
+            lines.append(f"  publisher = {{{_bib_escape(self.publisher)}}},")
         if self.doi:
-            lines.append(f'  doi = {{{self.doi}}},')
+            lines.append(f"  doi = {{{self.doi}}},")
         if self.url:
-            lines.append(f'  url = {{{self.url}}},')
+            lines.append(f"  url = {{{self.url}}},")
+        if self.arxiv_id:
+            lines.append(f"  eprint = {{{self.arxiv_id}}},")
+            lines.append("  archiveprefix = {arXiv},")
         lines.append("}")
         return "\n".join(lines)
+
+    def to_dict(self) -> dict:
+        return {
+            "title": self.title,
+            "authors": self.authors,
+            "year": self.year,
+            "abstract": self.abstract,
+            "doi": self.doi,
+            "url": self.url,
+            "source": self.source,
+            "citation_count": self.citation_count,
+            "journal": self.journal,
+            "arxiv_id": self.arxiv_id,
+            "pmid": self.pmid,
+            "open_access_url": self.open_access_url,
+            "keywords": self.keywords,
+        }
+
+
+@dataclass
+class ToolResult:
+    """Structured result from a tool execution."""
+    text: str
+    papers: list[Paper] = field(default_factory=list)
+
+
+def clean_abstract(text: str | None) -> str | None:
+    if not text:
+        return None
+    text = html.unescape(text)
+    text = re.sub(r"<[^>]+>", "", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def _bib_escape(s: str) -> str:
+    return s.replace("{", r"\{").replace("}", r"\}")

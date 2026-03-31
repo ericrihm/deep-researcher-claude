@@ -4,11 +4,14 @@ import time
 
 import httpx
 
-from deep_researcher.models import Paper
+from deep_researcher.models import Paper, ToolResult, clean_abstract
 from deep_researcher.tools.base import Tool
 
 S2_BASE = "https://api.semanticscholar.org/graph/v1"
 S2_FIELDS = "title,authors,year,abstract,doi,url,citationCount,journal,externalIds"
+
+_RETRIABLE_STATUSES = {429, 500, 502, 503}
+_NON_RETRIABLE_STATUSES = {400, 404}
 
 
 class SemanticScholarSearchTool(Tool):
@@ -30,7 +33,7 @@ class SemanticScholarSearchTool(Tool):
         "required": ["query"],
     }
 
-    def execute(self, query: str, max_results: int = 10) -> str:
+    def execute(self, query: str, max_results: int = 10) -> ToolResult:
         max_results = min(max_results, 20)
         try:
             resp = _request_with_retry(
@@ -39,18 +42,18 @@ class SemanticScholarSearchTool(Tool):
             )
             resp.raise_for_status()
         except httpx.HTTPError as e:
-            return f"Error searching Semantic Scholar: {e}"
+            return ToolResult(text=f"Error searching Semantic Scholar: {e}")
 
         data = resp.json()
         papers_data = data.get("data", [])
         if not papers_data:
-            return "No papers found on Semantic Scholar for this query."
+            return ToolResult(text="No papers found on Semantic Scholar for this query.")
 
         papers = [_parse_s2_paper(p) for p in papers_data]
         lines = [f"Found {len(papers)} papers on Semantic Scholar:\n"]
         for i, p in enumerate(papers, 1):
             lines.append(f"{i}. {p.to_summary()}\n")
-        return "\n".join(lines)
+        return ToolResult(text="\n".join(lines), papers=papers)
 
 
 class GetCitationsTool(Tool):
@@ -80,7 +83,7 @@ class GetCitationsTool(Tool):
         "required": ["paper_id", "direction"],
     }
 
-    def execute(self, paper_id: str, direction: str = "citations", max_results: int = 10) -> str:
+    def execute(self, paper_id: str, direction: str = "citations", max_results: int = 10) -> ToolResult:
         max_results = min(max_results, 20)
         try:
             fields_param = f"citingPaper.{S2_FIELDS}" if direction == "citations" else f"citedPaper.{S2_FIELDS}"
@@ -90,24 +93,26 @@ class GetCitationsTool(Tool):
             )
             resp.raise_for_status()
         except httpx.HTTPError as e:
-            return f"Error fetching {direction}: {e}"
+            return ToolResult(text=f"Error fetching {direction}: {e}")
 
         data = resp.json().get("data", [])
         if not data:
-            return f"No {direction} found for this paper."
+            return ToolResult(text=f"No {direction} found for this paper.")
 
         paper_key = "citingPaper" if direction == "citations" else "citedPaper"
         papers = [_parse_s2_paper(item[paper_key]) for item in data if item.get(paper_key)]
         lines = [f"Found {len(papers)} {direction}:\n"]
         for i, p in enumerate(papers, 1):
             lines.append(f"{i}. {p.to_summary()}\n")
-        return "\n".join(lines)
+        return ToolResult(text="\n".join(lines), papers=papers)
 
 
 def _request_with_retry(url: str, params: dict, max_retries: int = 3) -> httpx.Response:
     for attempt in range(max_retries):
         resp = httpx.get(url, params=params, timeout=30)
-        if resp.status_code == 429:
+        if resp.status_code in _NON_RETRIABLE_STATUSES:
+            return resp
+        if resp.status_code in _RETRIABLE_STATUSES:
             wait = 2 ** (attempt + 1)
             time.sleep(wait)
             continue
@@ -124,7 +129,7 @@ def _parse_s2_paper(data: dict) -> Paper:
         title=data.get("title", ""),
         authors=authors,
         year=data.get("year"),
-        abstract=data.get("abstract"),
+        abstract=clean_abstract(data.get("abstract")),
         doi=external_ids.get("DOI") or data.get("doi"),
         url=data.get("url"),
         source="semantic_scholar",

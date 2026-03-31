@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import time
+
 import httpx
 
-from deep_researcher.models import Paper
+from deep_researcher.models import Paper, ToolResult, clean_abstract
 from deep_researcher.tools.base import Tool
 
 CROSSREF_BASE = "https://api.crossref.org"
+
+_RETRIABLE_STATUSES = {429, 500, 502, 503}
 
 
 class CrossrefSearchTool(Tool):
@@ -30,37 +34,51 @@ class CrossrefSearchTool(Tool):
     def __init__(self, email: str = "") -> None:
         self._email = email
 
-    def execute(self, query: str, max_results: int = 10) -> str:
+    def execute(self, query: str, max_results: int = 10) -> ToolResult:
         max_results = min(max_results, 20)
         headers = {}
         if self._email:
             headers["User-Agent"] = f"DeepResearcher/0.1 (mailto:{self._email})"
 
         try:
-            resp = httpx.get(
-                f"{CROSSREF_BASE}/works",
-                params={"query": query, "rows": max_results, "sort": "relevance"},
-                headers=headers,
-                timeout=30,
-            )
+            resp = None
+            for attempt in range(3):
+                resp = httpx.get(
+                    f"{CROSSREF_BASE}/works",
+                    params={"query": query, "rows": max_results, "sort": "relevance"},
+                    headers=headers,
+                    timeout=30,
+                )
+                if resp.status_code in _RETRIABLE_STATUSES:
+                    time.sleep(2 ** (attempt + 1))
+                    continue
+                break
             resp.raise_for_status()
         except httpx.HTTPError as e:
-            return f"Error searching CrossRef: {e}"
+            return ToolResult(text=f"Error searching CrossRef: {e}")
 
         data = resp.json()
         items = data.get("message", {}).get("items", [])
         if not items:
-            return "No papers found on CrossRef for this query."
+            return ToolResult(text="No papers found on CrossRef for this query.")
 
-        papers = [_parse_crossref_item(item) for item in items if item.get("title", [""])[0]]
+        papers = []
+        for item in items:
+            titles = item.get("title") or []
+            if titles and titles[0]:
+                papers.append(_parse_crossref_item(item))
+
+        if not papers:
+            return ToolResult(text="No papers found on CrossRef for this query.")
+
         lines = [f"Found {len(papers)} papers on CrossRef:\n"]
         for i, p in enumerate(papers, 1):
             lines.append(f"{i}. {p.to_summary()}\n")
-        return "\n".join(lines)
+        return ToolResult(text="\n".join(lines), papers=papers)
 
 
 def _parse_crossref_item(data: dict) -> Paper:
-    title_list = data.get("title", [])
+    title_list = data.get("title") or []
     title = title_list[0] if title_list else ""
 
     authors = []
@@ -77,15 +95,14 @@ def _parse_crossref_item(data: dict) -> Paper:
         year = date_parts[0][0]
 
     doi = data.get("DOI")
-    abstract = data.get("abstract")
-    if abstract:
-        import re
-        abstract = re.sub(r"<[^>]+>", "", abstract).strip()
+    abstract = clean_abstract(data.get("abstract"))
 
     cited_by = data.get("is-referenced-by-count")
 
     container = data.get("container-title", [])
     journal = container[0] if container else None
+
+    publisher = data.get("publisher")
 
     url = data.get("URL")
 
@@ -99,4 +116,5 @@ def _parse_crossref_item(data: dict) -> Paper:
         source="crossref",
         citation_count=cited_by,
         journal=journal,
+        publisher=publisher,
     )

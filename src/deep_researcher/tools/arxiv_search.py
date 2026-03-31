@@ -5,10 +5,12 @@ import xml.etree.ElementTree as ET
 
 import httpx
 
-from deep_researcher.models import Paper
+from deep_researcher.models import Paper, ToolResult, clean_abstract
 from deep_researcher.tools.base import Tool
 
 ARXIV_NS = "{http://www.w3.org/2005/Atom}"
+
+_RETRIABLE_STATUSES = {429, 500, 502, 503}
 
 
 class ArxivSearchTool(Tool):
@@ -33,7 +35,7 @@ class ArxivSearchTool(Tool):
         "required": ["query"],
     }
 
-    def execute(self, query: str, max_results: int = 10) -> str:
+    def execute(self, query: str, max_results: int = 10) -> ToolResult:
         max_results = min(max_results, 30)
         if not any(prefix in query for prefix in ("all:", "ti:", "au:", "abs:", "cat:")):
             query = f"all:{query}"
@@ -47,22 +49,22 @@ class ArxivSearchTool(Tool):
                     timeout=30,
                     follow_redirects=True,
                 )
-                if resp.status_code == 429:
+                if resp.status_code in _RETRIABLE_STATUSES:
                     time.sleep(2 ** (attempt + 1))
                     continue
                 break
             resp.raise_for_status()
         except httpx.HTTPError as e:
-            return f"Error searching arXiv: {e}"
+            return ToolResult(text=f"Error searching arXiv: {e}")
 
         papers = _parse_arxiv_response(resp.text)
         if not papers:
-            return "No papers found on arXiv for this query."
+            return ToolResult(text="No papers found on arXiv for this query.")
 
         lines = [f"Found {len(papers)} papers on arXiv:\n"]
         for i, p in enumerate(papers, 1):
             lines.append(f"{i}. {p.to_summary()}\n")
-        return "\n".join(lines)
+        return ToolResult(text="\n".join(lines), papers=papers)
 
 
 def _parse_arxiv_response(xml_text: str) -> list[Paper]:
@@ -75,7 +77,8 @@ def _parse_arxiv_response(xml_text: str) -> list[Paper]:
             continue
 
         summary_el = entry.find(f"{ARXIV_NS}summary")
-        abstract = summary_el.text.strip().replace("\n", " ") if summary_el is not None and summary_el.text else None
+        raw_abstract = summary_el.text.strip().replace("\n", " ") if summary_el is not None and summary_el.text else None
+        abstract = clean_abstract(raw_abstract)
 
         authors = []
         for author_el in entry.findall(f"{ARXIV_NS}author"):
@@ -86,7 +89,10 @@ def _parse_arxiv_response(xml_text: str) -> list[Paper]:
         published_el = entry.find(f"{ARXIV_NS}published")
         year = None
         if published_el is not None and published_el.text:
-            year = int(published_el.text[:4])
+            try:
+                year = int(published_el.text[:4])
+            except (ValueError, IndexError):
+                pass
 
         arxiv_id = None
         url = None
