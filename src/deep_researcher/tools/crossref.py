@@ -90,9 +90,13 @@ def _parse_crossref_item(data: dict) -> Paper:
             authors.append(name)
 
     year = None
-    date_parts = data.get("published-print", data.get("published-online", {})).get("date-parts", [[]])
+    pub_info = data.get("published-print") or data.get("published-online") or {}
+    date_parts = pub_info.get("date-parts", [[]]) if isinstance(pub_info, dict) else [[]]
     if date_parts and date_parts[0]:
-        year = date_parts[0][0]
+        try:
+            year = int(date_parts[0][0])
+        except (ValueError, TypeError, IndexError):
+            pass
 
     doi = data.get("DOI")
     abstract = clean_abstract(data.get("abstract"))

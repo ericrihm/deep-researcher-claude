@@ -238,6 +238,8 @@ class ResearchAgent:
             {"role": "user", "content": f"Find all relevant papers on:\n\n{query}"},
         ]
         tool_schemas = self.registry.schemas()
+        compact_failures = 0  # Circuit breaker (Claude Code pattern)
+        _MAX_COMPACT_FAILURES = 3
 
         for iteration in range(1, self.config.max_iterations + 1):
             self.console.print(f"\n[dim]--- Search {iteration}/{self.config.max_iterations} | {len(self.papers)} papers | {len(self._databases_used)} databases ---[/dim]")
@@ -246,10 +248,15 @@ class ResearchAgent:
 
             try:
                 response = self.llm.chat(messages, tools=tool_schemas)
+                compact_failures = 0  # Reset on success
             except Exception as e:
                 self.console.print(f"[red]LLM error: {e}[/red]")
                 # If context is likely too long, try compacting and retrying once
                 if "too long" in str(e).lower() or "context" in str(e).lower():
+                    compact_failures += 1
+                    if compact_failures >= _MAX_COMPACT_FAILURES:
+                        self.console.print("[red]Context compression failed repeatedly. Proceeding to synthesis.[/red]")
+                        break
                     self.console.print("[yellow]Attempting context compression recovery...[/yellow]")
                     messages = _compact_messages(messages, lambda m: _MAX_SEARCH_TOKENS + 1)  # Force compress
                     try:
@@ -299,6 +306,9 @@ class ResearchAgent:
                 })
 
             self.console.print(f"  [yellow]Total: {len(self.papers)} unique papers from {len(self._databases_used)} databases[/yellow]")
+        else:
+            # Loop completed without LLM saying DONE (hit max iterations)
+            self.console.print(f"\n[yellow]Reached iteration limit ({self.config.max_iterations}). Proceeding to synthesis with {len(self.papers)} papers.[/yellow]")
 
     def _synthesis_phase(self, query: str) -> str:
         """Synthesize all collected papers into a categorized analysis."""

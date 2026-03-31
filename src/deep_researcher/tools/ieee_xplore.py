@@ -57,7 +57,7 @@ class IEEEXploreSearchTool(Tool):
                         "apikey": self._api_key,
                         "querytext": query,
                         "max_records": max_results,
-                        "sort_field": "article_number",
+                        "sort_field": "publication_year",
                         "sort_order": "desc",
                     },
                     timeout=30,
