@@ -66,7 +66,7 @@ class LLMClient:
                 if any(hint in err_str for hint in ("tool", "function", "not supported", "invalid param")):
                     raise ToolCallingNotSupported(
                         f"Model '{self.model}' may not support function calling.\n"
-                        f"Recommended models: llama3.1, qwen2.5:14b, gpt-4o, claude-sonnet\n"
+                        f"Recommended models: qwen3.5:9b (local), gpt-5.4-mini (OpenAI), claude-sonnet-4-6 (Anthropic)\n"
                         f"Original error: {e}"
                     ) from e
                 # Retry on server errors (5xx), fail fast on client errors (4xx)

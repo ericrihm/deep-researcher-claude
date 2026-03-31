@@ -38,7 +38,7 @@ class CrossrefSearchTool(Tool):
         max_results = min(max_results, 20)
         headers = {}
         if self._email:
-            headers["User-Agent"] = f"DeepResearcher/0.1 (mailto:{self._email})"
+            headers["User-Agent"] = f"DeepResearcher/0.2 (mailto:{self._email})"
 
         try:
             resp = None
