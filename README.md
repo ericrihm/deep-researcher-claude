@@ -1,14 +1,14 @@
 <p align="center">
   <h1 align="center">Deep Researcher</h1>
   <p align="center">
-    <strong>An agentic academic research assistant that searches 6 databases, follows citation chains, and writes structured literature reviews.</strong>
+    <strong>An agentic academic research assistant that searches 8 databases (open and paywalled), follows citation chains, and writes structured literature reviews.</strong>
   </p>
   <p align="center">
     <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python 3.10+"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License: MIT"></a>
     <img src="https://img.shields.io/badge/dependencies-3-brightgreen.svg" alt="Dependencies: 3">
     <img src="https://img.shields.io/badge/lines_of_code-~1.5K-blue.svg" alt="LOC: ~1.5K">
-    <img src="https://img.shields.io/badge/databases-6-orange.svg" alt="Databases: 6">
+    <img src="https://img.shields.io/badge/databases-8-orange.svg" alt="Databases: 8">
   </p>
   <p align="center">
     <a href="#quick-start">Quick Start</a> &middot;
@@ -28,7 +28,7 @@ It runs a real agentic loop where the LLM decides what to search next, when to d
 **3 dependencies. ~1,500 lines. No LangChain.**
 
 > [!NOTE]
-> Deep Researcher searches **real academic databases** (Semantic Scholar, OpenAlex, arXiv, CrossRef, PubMed, CORE), not the open web. This means every paper it finds actually exists. No hallucinated sources.
+> Deep Researcher searches **real academic databases** (Semantic Scholar, OpenAlex, arXiv, CrossRef, PubMed, CORE, Scopus, IEEE Xplore), not the open web. It finds papers from both open access and paywalled sources (abstracts and metadata are always available). No hallucinated sources.
 
 ---
 
@@ -38,7 +38,7 @@ Existing tools like GPT Researcher and STORM are powerful but rely on **general 
 
 Deep Researcher was built for **academics, grad students, and researchers** who need:
 
-- Proper coverage across real academic databases (not just Google)
+- Proper coverage across real academic databases, including paywalled sources (not just Google)
 - Citation chains to find foundational and recent work
 - BibTeX output they can actually import into LaTeX/Overleaf
 - Open access detection for paywalled papers
@@ -182,11 +182,13 @@ dominant yet. Transfer learning is the most common strategy across all groups.
           │   Phase 1-2: SEARCH AGENT   │
           │                             │
           │  ┌─── arXiv ────────────┐   │
-          │  ├─── Semantic Scholar ─┤   │    The LLM decides
-          │  ├─── OpenAlex ─────────┤ ► │    what to search,
-          │  ├─── CrossRef ─────────┤   │    follows citations,
-          │  ├─── PubMed ───────────┤   │    and stops when it
-          │  └─── CORE ─────────────┘   │    has enough papers
+          │  ├─── Semantic Scholar ─┤   │
+          │  ├─── OpenAlex ─────────┤   │    The LLM decides
+          │  ├─── CrossRef ─────────┤   │    what to search,
+          │  ├─── PubMed ───────────┤ ► │    follows citations,
+          │  ├─── CORE ─────────────┤   │    and stops when it
+          │  ├─── Scopus ───────────┤   │    has enough papers
+          │  └─── IEEE Xplore ──────┘   │
           │                             │
           │  + Citation chain following │
           │  + Open access detection    │
@@ -254,11 +256,13 @@ These two flags control how thorough the research is. Think of it like adjusting
 | `search_crossref` | CrossRef | 150M+ | Elsevier, Springer, IEEE, Wiley, ACM |
 | `search_pubmed` | PubMed | 36M+ | Biomedical and life sciences |
 | `search_core` | CORE | 300M+ | Open access full texts worldwide |
+| `search_scopus` | Scopus (Elsevier) | 90M+ | Most major publishers; abstracts of paywalled papers |
+| `search_ieee` | IEEE Xplore | 6M+ | IEEE/IET journals, conferences, standards |
 | `get_paper_details` | Semantic Scholar | - | Deep lookup by DOI with TLDR |
 | `get_citations` | Semantic Scholar | - | "Who cites this" / "What this cites" |
 | `find_open_access` | Unpaywall | - | Find free legal copies of paywalled papers |
 
-> All APIs are **free**. No Tavily, no SearXNG, no paid search APIs required.
+> All APIs are **free** (some require a free registration for an API key). No Tavily, no SearXNG, no paid search APIs required.
 
 ---
 
@@ -311,6 +315,8 @@ Priority: CLI args > environment variables > config file > defaults.
 | `DEEP_RESEARCH_MAX_ITER` | `20` | Max iterations |
 | `DEEP_RESEARCH_EMAIL` | - | Email for polite API pool |
 | `CORE_API_KEY` | - | Free key from [CORE](https://core.ac.uk/api-keys/register) |
+| `SCOPUS_API_KEY` | - | Free key from [Elsevier Dev](https://dev.elsevier.com/) |
+| `IEEE_API_KEY` | - | Free key from [IEEE Developer](https://developer.ieee.org/) |
 
 </details>
 
@@ -361,7 +367,8 @@ Priority: CLI args > environment variables > config file > defaults.
 
 | | GPT Researcher | STORM | local-deep-research | **Deep Researcher** |
 |---|---|---|---|---|
-| Academic databases | 0 (web only) | 0 (web only) | 3 | **6** |
+| Academic databases | 0 (web only) | 0 (web only) | 3 | **8** |
+| Paywalled sources | No | No | No | **Yes (abstracts)** |
 | Citation chains | No | No | No | **Yes** |
 | Open access check | No | No | No | **Yes** |
 | Paper deduplication | No | No | No | **Yes** |
@@ -457,6 +464,8 @@ src/deep_researcher/
     crossref.py        # CrossRef API
     pubmed.py          # PubMed E-utilities
     core_search.py     # CORE API
+    scopus.py          # Scopus (Elsevier) API
+    ieee_xplore.py     # IEEE Xplore API
     paper_details.py   # Paper lookup by DOI
     open_access.py     # Unpaywall open access check
 ```

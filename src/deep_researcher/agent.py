@@ -44,12 +44,14 @@ Stop searching (respond with just "DONE") when:
 - When you are done searching, respond with exactly: DONE
 
 ## Available Databases
-- **arXiv**: Preprints — CS, physics, math, engineering, biology
+- **arXiv**: Preprints in CS, physics, math, engineering, biology
 - **Semantic Scholar**: 200M+ papers, citation counts, TLDR summaries
 - **OpenAlex**: 250M+ works, fully open metadata
 - **CrossRef**: 150M+ records from Elsevier, Springer, IEEE, Wiley
 - **PubMed**: 36M+ biomedical and life sciences
 - **CORE**: 300M+ open access articles
+- **Scopus**: 90M+ records from most major publishers (abstracts of paywalled papers too)
+- **IEEE Xplore**: 6M+ IEEE/IET engineering and CS papers
 """
 
 

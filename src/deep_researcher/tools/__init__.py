@@ -5,6 +5,8 @@ from deep_researcher.tools.arxiv_search import ArxivSearchTool
 from deep_researcher.tools.base import ToolRegistry
 from deep_researcher.tools.core_search import CoreSearchTool
 from deep_researcher.tools.crossref import CrossrefSearchTool
+from deep_researcher.tools.ieee_xplore import IEEEXploreSearchTool
+from deep_researcher.tools.scopus import ScopusSearchTool
 from deep_researcher.tools.open_access import OpenAccessTool
 from deep_researcher.tools.openalex import OpenAlexSearchTool
 from deep_researcher.tools.paper_details import PaperDetailsTool
@@ -20,6 +22,8 @@ def build_tool_registry(config: Config) -> ToolRegistry:
     registry.register(CrossrefSearchTool(email=config.email))
     registry.register(PubMedSearchTool())
     registry.register(CoreSearchTool(api_key=config.core_api_key))
+    registry.register(ScopusSearchTool(api_key=config.scopus_api_key))
+    registry.register(IEEEXploreSearchTool(api_key=config.ieee_api_key))
     registry.register(PaperDetailsTool())
     registry.register(GetCitationsTool())
     registry.register(OpenAccessTool(email=config.email))
