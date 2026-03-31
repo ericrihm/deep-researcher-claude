@@ -40,7 +40,7 @@ class Config:
         file_cfg = _load_config_file()
 
         if not self.model:
-            self.model = _get(file_cfg, "model", "DEEP_RESEARCH_MODEL", "llama3.1")
+            self.model = _get(file_cfg, "model", "DEEP_RESEARCH_MODEL", "qwen3.5:9b")
         if not self.base_url:
             self.base_url = _get(file_cfg, "base_url", "OPENAI_BASE_URL", "http://localhost:11434/v1")
         if not self.api_key:
