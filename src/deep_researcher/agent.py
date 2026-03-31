@@ -10,6 +10,10 @@ from deep_researcher.models import Paper
 from deep_researcher.report import save_report
 from deep_researcher.tools import build_tool_registry
 
+import logging
+
+logger = logging.getLogger("deep_researcher")
+
 
 # --- Search phase prompt: focus on GATHERING papers, not writing ---
 
@@ -111,30 +115,38 @@ List papers with free full-text versions available (if any were found).
 """
 
 
-# Maximum tool result messages before compressing old ones
-_COMPACT_THRESHOLD = 30
+# Token budget for search phase context (leave room for tool schemas + response)
+_MAX_SEARCH_TOKENS = 80_000
 
 
-def _compact_messages(messages: list[dict]) -> list[dict]:
-    """Compress old tool results to keep context manageable (Claude Code autoCompact pattern)."""
-    tool_msgs = [(i, m) for i, m in enumerate(messages) if m.get("role") == "tool"]
-    if len(tool_msgs) <= _COMPACT_THRESHOLD:
+def _compact_messages(messages: list[dict], token_estimate_fn) -> list[dict]:
+    """Token-aware context compression (Claude Code autoCompact pattern).
+
+    Instead of counting messages, estimates token usage and compresses
+    old tool results when approaching the context limit. Preserves
+    paper identifiers so the model knows what it already found.
+    """
+    estimated = token_estimate_fn(messages)
+    if estimated < _MAX_SEARCH_TOKENS:
         return messages
 
-    cutoff = len(tool_msgs) - _COMPACT_THRESHOLD // 2
-    old_indices = {i for i, _ in tool_msgs[:cutoff]}
+    # Find tool messages, compress oldest ones
+    tool_indices = [i for i, m in enumerate(messages) if m.get("role") == "tool"]
+    if not tool_indices:
+        return messages
 
-    compacted = []
-    for i, msg in enumerate(messages):
-        if i in old_indices:
-            content = msg["content"]
-            if len(content) > 200:
-                first_line = content.split("\n")[0]
-                compacted.append({**msg, "content": f"{first_line}\n[Earlier results truncated to save context]"})
-            else:
-                compacted.append(msg)
-        else:
-            compacted.append(msg)
+    # Compress from oldest until we're under budget
+    compacted = list(messages)
+    for idx in tool_indices:
+        if token_estimate_fn(compacted) < _MAX_SEARCH_TOKENS:
+            break
+        content = compacted[idx]["content"]
+        if len(content) > 300:
+            # Keep the summary line + paper count, drop details
+            lines = content.split("\n")
+            summary = lines[0] if lines else "Search results"
+            compacted[idx] = {**compacted[idx], "content": f"{summary}\n[Results compressed — papers tracked separately]"}
+
     return compacted
 
 
@@ -228,13 +240,23 @@ class ResearchAgent:
         for iteration in range(1, self.config.max_iterations + 1):
             self.console.print(f"\n[dim]--- Search {iteration}/{self.config.max_iterations} | {len(self.papers)} papers | {len(self._databases_used)} databases ---[/dim]")
 
-            messages = _compact_messages(messages)
+            messages = _compact_messages(messages, LLMClient.estimate_tokens)
 
             try:
                 response = self.llm.chat(messages, tools=tool_schemas)
             except Exception as e:
                 self.console.print(f"[red]LLM error: {e}[/red]")
-                break
+                # If context is likely too long, try compacting and retrying once
+                if "too long" in str(e).lower() or "context" in str(e).lower():
+                    self.console.print("[yellow]Attempting context compression recovery...[/yellow]")
+                    messages = _compact_messages(messages, lambda m: _MAX_SEARCH_TOKENS + 1)  # Force compress
+                    try:
+                        response = self.llm.chat(messages, tools=tool_schemas)
+                    except Exception:
+                        self.console.print("[red]Recovery failed. Proceeding to synthesis with papers found so far.[/red]")
+                        break
+                else:
+                    break
 
             # No tool calls = LLM says it's done searching
             if not response.tool_calls:
@@ -252,8 +274,8 @@ class ResearchAgent:
             ]
 
             if len(tc_list) > 1:
-                self.console.print(f"  [cyan]Executing {len(tc_list)} tools concurrently...[/cyan]")
-                results = self.registry.execute_concurrent(tc_list)
+                self.console.print(f"  [cyan]Executing {len(tc_list)} tools (partitioned)...[/cyan]")
+                results = self.registry.execute_partitioned(tc_list)
             else:
                 results = []
                 for tc in tc_list:
