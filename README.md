@@ -23,18 +23,18 @@
 
 Most "AI research tools" do a web search and summarize. Deep Researcher does what an actual researcher does: **searches multiple academic databases, reads abstracts, follows citation chains, refines search queries based on findings, and only writes up when it has enough material.**
 
-It runs a real agentic loop — the LLM decides what to search next, when to dig deeper, and when to stop. Not a pipeline. Not a single prompt. An autonomous research agent.
+It runs a real agentic loop where the LLM decides what to search next, when to dig deeper, and when to stop. Not a pipeline. Not a single prompt. An autonomous research agent.
 
 **3 dependencies. ~1,500 lines. No LangChain.**
 
 > [!NOTE]
-> Deep Researcher searches **real academic databases** (Semantic Scholar, OpenAlex, arXiv, CrossRef, PubMed, CORE) — not the open web. This means every paper it finds actually exists. No hallucinated sources.
+> Deep Researcher searches **real academic databases** (Semantic Scholar, OpenAlex, arXiv, CrossRef, PubMed, CORE), not the open web. This means every paper it finds actually exists. No hallucinated sources.
 
 ---
 
 ## Why This Exists
 
-Existing tools like GPT Researcher and STORM are powerful but rely on **general web search** — great for current events, not for academic research. They miss the databases that matter: Semantic Scholar, OpenAlex, CrossRef, PubMed. They can't follow citation chains. They don't output BibTeX.
+Existing tools like GPT Researcher and STORM are powerful but rely on **general web search**. Great for current events, but not for academic research. They miss the databases that matter: Semantic Scholar, OpenAlex, CrossRef, PubMed. They can't follow citation chains. They don't output BibTeX.
 
 Deep Researcher was built for **academics, grad students, and researchers** who need:
 
@@ -45,7 +45,7 @@ Deep Researcher was built for **academics, grad students, and researchers** who 
 - A tool they can run **100% locally** with their own models
 
 > [!TIP]
-> Unlike Gemini or ChatGPT deep research, Deep Researcher doesn't give you a history lesson. It **categorizes papers, synthesizes across groups, and identifies gaps** — like Connected Papers, but with analysis.
+> Unlike Gemini or ChatGPT deep research, Deep Researcher doesn't give you a history lesson. It **categorizes papers, synthesizes across groups, and identifies gaps**, like Connected Papers but with analysis.
 
 ---
 
@@ -118,7 +118,7 @@ Each session produces four files:
 ```
 output/2026-03-31-142315-transformer-structural-health/
 ├── report.md        # Categorized literature review with synthesis
-├── references.bib   # Deduplicated BibTeX — import into LaTeX/Overleaf
+├── references.bib   # Deduplicated BibTeX (import into LaTeX/Overleaf)
 ├── papers.json      # Full metadata for every paper found
 └── metadata.json    # Research stats: databases, coverage, year range
 ```
@@ -127,7 +127,7 @@ output/2026-03-31-142315-transformer-structural-health/
 
 ## Sample Output
 
-Here's what the synthesis looks like — **not a history lesson, but structured analysis:**
+Here's what the synthesis looks like. **Not a list of summaries. Structured analysis:**
 
 ```markdown
 ### Transformer Models for Structural Health Monitoring
@@ -175,18 +175,18 @@ dominant yet. Transfer learning is the most common strategy across all groups.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                  YOUR RESEARCH QUESTION                  │
+│                  YOUR RESEARCH QUESTION                 │
 └────────────────────────┬────────────────────────────────┘
                          │
           ┌──────────────▼──────────────┐
           │   Phase 1-2: SEARCH AGENT   │
           │                             │
-          │  ┌─── arXiv ──────────┐     │
-          │  ├─── Semantic Scholar┤     │    The LLM decides
-          │  ├─── OpenAlex ───────┤ ──► │    what to search,
-          │  ├─── CrossRef ───────┤     │    follows citations,
-          │  ├─── PubMed ─────────┤     │    and stops when it
-          │  └─── CORE ───────────┘     │    has enough papers
+          │  ┌─── arXiv ────────────┐   │
+          │  ├─── Semantic Scholar ─┤   │    The LLM decides
+          │  ├─── OpenAlex ─────────┤ ► │    what to search,
+          │  ├─── CrossRef ─────────┤   │    follows citations,
+          │  ├─── PubMed ───────────┤   │    and stops when it
+          │  └─── CORE ─────────────┘   │    has enough papers
           │                             │
           │  + Citation chain following │
           │  + Open access detection    │
@@ -210,8 +210,8 @@ dominant yet. Transfer learning is the most common strategy across all groups.
           └──────────────┬──────────────┘
                          │
           ┌──────────────▼──────────────┐
-          │  report.md + references.bib │
-          │  papers.json + metadata.json│
+          │ report.md + references.bib  │
+          │ papers.json + metadata.json │
           └─────────────────────────────┘
 ```
 
@@ -254,9 +254,9 @@ These two flags control how thorough the research is. Think of it like adjusting
 | `search_crossref` | CrossRef | 150M+ | Elsevier, Springer, IEEE, Wiley, ACM |
 | `search_pubmed` | PubMed | 36M+ | Biomedical and life sciences |
 | `search_core` | CORE | 300M+ | Open access full texts worldwide |
-| `get_paper_details` | Semantic Scholar | — | Deep lookup by DOI with TLDR |
-| `get_citations` | Semantic Scholar | — | "Who cites this" / "What this cites" |
-| `find_open_access` | Unpaywall | — | Find free legal copies of paywalled papers |
+| `get_paper_details` | Semantic Scholar | - | Deep lookup by DOI with TLDR |
+| `get_citations` | Semantic Scholar | - | "Who cites this" / "What this cites" |
+| `find_open_access` | Unpaywall | - | Find free legal copies of paywalled papers |
 
 > All APIs are **free**. No Tavily, no SearXNG, no paid search APIs required.
 
@@ -309,8 +309,8 @@ Priority: CLI args > environment variables > config file > defaults.
 | `OPENAI_BASE_URL` | `http://localhost:11434/v1` | API endpoint |
 | `OPENAI_API_KEY` | `ollama` | API key |
 | `DEEP_RESEARCH_MAX_ITER` | `20` | Max iterations |
-| `DEEP_RESEARCH_EMAIL` | — | Email for polite API pool |
-| `CORE_API_KEY` | — | Free key from [CORE](https://core.ac.uk/api-keys/register) |
+| `DEEP_RESEARCH_EMAIL` | - | Email for polite API pool |
+| `CORE_API_KEY` | - | Free key from [CORE](https://core.ac.uk/api-keys/register) |
 
 </details>
 
@@ -405,19 +405,19 @@ Register it in `src/deep_researcher/tools/__init__.py` and it's immediately avai
 
 ## How This Was Built
 
-This project started as a study of **Claude Code's source code** — Anthropic's CLI for Claude, which became [publicly accessible](https://x.com/Fried_rice/status/2038894956459290963) on March 31, 2026 through a source map exposure in the npm distribution (~512K lines of TypeScript).
+This project started as a study of **Claude Code's source code** (Anthropic's CLI for Claude), which became [publicly accessible](https://x.com/Fried_rice/status/2038894956459290963) on March 31, 2026 through a source map exposure in the npm distribution (~512K lines of TypeScript).
 
 While analyzing the architecture, several patterns stood out as broadly applicable beyond coding assistants:
 
-1. **The agentic tool-call loop** (`queryLoop()` in `query.ts`) — a while loop where the LLM calls tools, gets results, and decides what to do next
-2. **Partitioned concurrent execution** (`partitionToolCalls()` in `toolOrchestration.ts`) — read-only tools run in parallel, write tools run serially
-3. **Structured tool results** (`ToolResult<T>` in `Tool.ts`) — tools return typed data alongside human-readable text
-4. **Token-aware context compression** (`autoCompact` in `compact.ts`) — keeps conversations within context limits
-5. **Multi-level retry/recovery** — exponential backoff, reactive compaction, graceful degradation
+1. **The agentic tool-call loop** (`queryLoop()` in `query.ts`): a while loop where the LLM calls tools, gets results, and decides what to do next
+2. **Partitioned concurrent execution** (`partitionToolCalls()` in `toolOrchestration.ts`): read-only tools run in parallel, write tools run serially
+3. **Structured tool results** (`ToolResult<T>` in `Tool.ts`): tools return typed data alongside human-readable text
+4. **Token-aware context compression** (`autoCompact` in `compact.ts`): keeps conversations within context limits
+5. **Multi-level retry/recovery**: exponential backoff, reactive compaction, graceful degradation
 
 The question was: **what if you applied these production-tested patterns to academic research instead of code editing?**
 
-The result is Deep Researcher — a clean-room Python implementation that uses the same architectural DNA as Claude Code but pointed at academic databases. No code was copied; just the design patterns that make agentic systems reliable in production.
+The result is Deep Researcher: a clean-room Python implementation that uses the same architectural DNA as Claude Code but pointed at academic databases. No code was copied; just the design patterns that make agentic systems reliable in production.
 
 <details>
 <summary><strong>Architecture mapping: Claude Code → Deep Researcher</strong></summary>
@@ -435,7 +435,7 @@ The result is Deep Researcher — a clean-room Python implementation that uses t
 
 ### Built With
 
-The entire project — from initial architecture study through implementation to this README — was built in a single session using [Claude Code](https://claude.ai/claude-code) (Claude Opus 4.6). The agentic patterns we studied in Claude Code's source were implemented by Claude Code itself.
+The entire project (architecture study, implementation, this README) was built in a single session using [Claude Code](https://claude.ai/claude-code) (Claude Opus 4.6). The agentic patterns we studied in Claude Code's source were implemented by Claude Code itself.
 
 ---
 

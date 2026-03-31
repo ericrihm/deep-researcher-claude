@@ -43,7 +43,7 @@ def main() -> None:
     console = Console()
 
     if not args.query:
-        console.print("[bold]Deep Researcher[/bold] — Academic Literature Review Agent\n")
+        console.print("[bold]Deep Researcher[/bold] - Academic Literature Review Agent\n")
         console.print("Usage: deep-researcher \"your research question here\"\n")
         console.print("Examples:")
         console.print('  deep-researcher "transformer models in structural health monitoring"')
@@ -106,7 +106,7 @@ def main() -> None:
         console.print("\n[yellow]Research interrupted.[/yellow]")
         if agent.papers:
             console.print(f"[yellow]Saving {len(agent.papers)} papers collected so far...[/yellow]")
-            agent._save(args.query, "# Research Interrupted\n\nPartial results — research was interrupted before synthesis.")
+            agent._save(args.query, "# Research Interrupted\n\nPartial results: research was interrupted before synthesis.")
         sys.exit(1)
 
 

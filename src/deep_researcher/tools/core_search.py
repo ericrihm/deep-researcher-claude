@@ -37,7 +37,7 @@ class CoreSearchTool(Tool):
     def execute(self, query: str, max_results: int = 10) -> ToolResult:
         if not self._api_key:
             return ToolResult(
-                text="CORE search is not available — no API key configured. Set CORE_API_KEY environment variable with a free key from https://core.ac.uk/api-keys/register."
+                text="CORE search is not available (no API key configured). Set CORE_API_KEY environment variable with a free key from https://core.ac.uk/api-keys/register."
             )
 
         max_results = min(max_results, 20)
