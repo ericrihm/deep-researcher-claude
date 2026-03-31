@@ -1,36 +1,50 @@
-# Deep Researcher
+<p align="center">
+  <h1 align="center">Deep Researcher</h1>
+  <p align="center">
+    <strong>An agentic academic research assistant that searches 6 databases and writes literature reviews.</strong>
+  </p>
+  <p align="center">
+    <a href="#quick-start">Quick Start</a> &middot;
+    <a href="#how-it-works">How It Works</a> &middot;
+    <a href="#configuration">Configuration</a> &middot;
+    <a href="#how-this-was-built">Origin Story</a>
+  </p>
+</p>
 
-An agentic academic research assistant that searches multiple databases and produces structured literature reviews.
+---
 
-Built using agentic design patterns studied from [Claude Code's architecture](https://github.com/anthropics/claude-code) — the same tool-call loop, concurrent execution, and structured tool result patterns used in production by Anthropic's CLI. Clean-room Python implementation; no code copied, just battle-tested architectural patterns applied to academic research.
+Most "AI research tools" do a web search and summarize. Deep Researcher does what an actual researcher does: **searches multiple academic databases, reads abstracts, follows citation chains, refines search queries based on findings, and only writes up when it has enough material.**
 
-Unlike simple search-and-summarize tools, Deep Researcher uses a **real agentic loop** — the LLM decides what to search, reads results, refines queries, follows citation chains, and only synthesizes when it has enough material. Like a real researcher would.
+It runs a real agentic loop — the LLM decides what to search next, when to dig deeper, and when to stop. Not a pipeline. Not a single prompt. An autonomous research agent.
 
-## Features
+**3 dependencies. ~1,500 lines. No LangChain.**
 
-- **9 tools** across 6 academic databases (arXiv, Semantic Scholar, OpenAlex, CrossRef, PubMed, CORE)
-- **Agentic loop** — the LLM decides search strategy, iterates, and follows citation chains
-- **Concurrent tool execution** — multiple database searches run in parallel (Claude Code pattern)
-- **Structured paper tracking** — automatic deduplication and metadata merging across databases
-- **Multi-phase research** — guided discovery, deep dive, and synthesis phases
-- **Depth/breadth controls** — tune research intensity with simple parameters
-- **Model agnostic** — works with Ollama (local), OpenAI, Anthropic, LMStudio, or any OpenAI-compatible API
-- **Structured output** — Markdown report + BibTeX + JSON + research metadata
-- **Saves on interrupt** — Ctrl+C preserves all papers found so far
-- **Config file support** — `~/.deep-researcher/config.json` for persistent settings
-- **Minimal dependencies** — just `openai`, `httpx`, and `rich`. No LangChain, no framework bloat
+---
+
+## Why This Exists
+
+Existing tools like GPT Researcher and STORM are powerful but rely on **general web search** — great for current events, not for academic research. They miss the databases that matter: Semantic Scholar, OpenAlex, CrossRef, PubMed. They can't follow citation chains. They don't output BibTeX.
+
+Deep Researcher was built for **academics, grad students, and researchers** who need:
+- Proper coverage across real academic databases (not just Google)
+- Citation chains to find foundational and recent work
+- BibTeX output they can actually import into LaTeX/Overleaf
+- Open access detection for paywalled papers
+- A tool they can run locally with their own models
+
+---
 
 ## Quick Start
 
 ### Install
 
 ```bash
+git clone https://github.com/jackswl/deep-researcher.git
+cd deep-researcher
 pip install -e .
 ```
 
-### Run with Ollama (local, free)
-
-Make sure [Ollama](https://ollama.com) is running with a model that supports function calling:
+### Run with Ollama (local, free, private)
 
 ```bash
 ollama pull llama3.1
@@ -42,8 +56,7 @@ deep-researcher "applications of transformer models in structural health monitor
 ```bash
 export OPENAI_BASE_URL="https://api.openai.com/v1"
 export OPENAI_API_KEY="sk-..."
-export DEEP_RESEARCH_MODEL="gpt-4o"
-deep-researcher "machine learning for drug discovery"
+deep-researcher "machine learning for drug discovery" --model gpt-4o
 ```
 
 ### Run with Anthropic
@@ -51,9 +64,89 @@ deep-researcher "machine learning for drug discovery"
 ```bash
 export OPENAI_BASE_URL="https://api.anthropic.com/v1"
 export OPENAI_API_KEY="sk-ant-..."
-export DEEP_RESEARCH_MODEL="claude-sonnet-4-20250514"
-deep-researcher "CRISPR gene editing efficiency improvements"
+deep-researcher "CRISPR gene editing efficiency" --model claude-sonnet-4-20250514
 ```
+
+---
+
+## What You Get
+
+Each session produces four files in `./output/<timestamp>-<topic>/`:
+
+```
+output/2026-03-31-142315-transformer-structural-health/
+  report.md        # Structured literature review with thematic analysis
+  references.bib   # Deduplicated BibTeX — import directly into LaTeX
+  papers.json      # Full metadata for all papers found
+  metadata.json    # Research stats: databases, coverage, year range
+```
+
+---
+
+## How It Works
+
+```
+                        YOUR RESEARCH QUESTION
+                                |
+                                v
+                 +------------------------------+
+                 |     Phase 1: DISCOVERY        |
+                 |  Break query into subqueries  |
+                 |  Search 3-6 databases         |
+                 |  Run searches concurrently    |
+                 |  Collect 20-40 candidates     |
+                 +------------------------------+
+                                |
+                                v
+                 +------------------------------+
+                 |     Phase 2: DEEP DIVE        |
+                 |  Follow citation chains       |
+                 |  Get details on key papers    |
+                 |  Check open access (Unpaywall)|
+                 |  Find survey/review papers    |
+                 +------------------------------+
+                                |
+                                v
+                 +------------------------------+
+                 |     Phase 3: SYNTHESIS        |
+                 |  Thematic analysis            |
+                 |  Chronological development    |
+                 |  Research gaps identified     |
+                 |  Numbered inline citations    |
+                 +------------------------------+
+                                |
+                                v
+              report.md + references.bib + papers.json
+```
+
+The LLM drives the entire process. It decides which databases to search, what queries to use, when to follow citations, and when it has enough to synthesize. You control the intensity with two knobs:
+
+```bash
+# Quick scan — fast, surface-level
+deep-researcher "topic" --breadth 1 --depth 0
+
+# Standard research (default)
+deep-researcher "topic"
+
+# Comprehensive — wide search, deep citation chains
+deep-researcher "topic" --breadth 5 --depth 4
+```
+
+### Academic Databases
+
+| Tool | Source | What It Covers |
+|---|---|---|
+| `search_arxiv` | arXiv | Preprints: CS, physics, math, engineering, biology |
+| `search_semantic_scholar` | Semantic Scholar | 200M+ papers, all fields, citation graphs |
+| `search_openalex` | OpenAlex | 250M+ works, fully open metadata |
+| `search_crossref` | CrossRef | 150M+ records from Elsevier, Springer, IEEE, Wiley |
+| `search_pubmed` | PubMed | 36M+ biomedical and life sciences |
+| `search_core` | CORE | 300M+ open access full texts |
+| `get_paper_details` | Semantic Scholar | Deep lookup on a specific paper by DOI |
+| `get_citations` | Semantic Scholar | Papers that cite this / papers this cites |
+| `find_open_access` | Unpaywall | Legal free copies of paywalled papers |
+
+---
 
 ## Usage
 
@@ -62,131 +155,23 @@ deep-researcher "your research question" [options]
 
 Options:
   --model MODEL          LLM model name (default: llama3.1)
-  --base-url URL         OpenAI-compatible API URL (default: http://localhost:11434/v1)
-  --api-key KEY          API key (default: ollama)
-  --max-iterations N     Max research iterations (default: 20)
+  --base-url URL         OpenAI-compatible API URL
+  --api-key KEY          API key
+  --breadth N            Search breadth: query variations (1-5, default: 3)
+  --depth N              Search depth: citation rounds (0-5, default: 2)
+  --max-iterations N     Max agentic loop iterations (default: 20)
   --output DIR           Output directory (default: ./output)
   --email EMAIL          Email for polite API access (recommended)
-  --breadth N            Search breadth: query variations per topic (1-5, default: 3)
-  --depth N              Search depth: citation chain rounds (0-5, default: 2)
   --version              Show version
 ```
 
-### Depth & Breadth
-
-These control research intensity without needing to understand the internals:
-
-```bash
-# Quick scan — fewer queries, shallow citations
-deep-researcher "topic" --breadth 1 --depth 0
-
-# Standard research (default)
-deep-researcher "topic" --breadth 3 --depth 2
-
-# Comprehensive deep dive — many query variations, deep citation chains
-deep-researcher "topic" --breadth 5 --depth 4
-```
-
-## Output
-
-Each research session produces four files in `./output/<timestamp>-<topic>/`:
-
-| File | Contents |
-|---|---|
-| `report.md` | Literature review with metadata header and thematic analysis |
-| `references.bib` | Deduplicated BibTeX entries for all papers |
-| `papers.json` | Full metadata for all papers (for programmatic use) |
-| `metadata.json` | Research statistics: query, databases, paper count, year range |
-
-## Architecture
-
-```
-User query + depth/breadth config
-    |
-    v
-+--------------------------------------+
-|  Phase 1: DISCOVERY                  |
-|  - Generate varied search queries    |
-|  - Search 3+ databases concurrently  |
-|  - Collect 20-40 candidate papers    |
-+--------------------------------------+
-    |
-    v
-+--------------------------------------+
-|  Phase 2: DEEP DIVE                  |
-|  - Follow citation chains            |
-|  - Get details on key papers         |
-|  - Check open access availability    |
-+--------------------------------------+
-    |
-    v
-+--------------------------------------+
-|  Phase 3: SYNTHESIS                  |
-|  - Structured literature review      |
-|  - Thematic analysis                 |
-|  - Numbered citations                |
-+--------------------------------------+
-    |
-    v
-report.md + references.bib + papers.json + metadata.json
-```
-
-### Design Patterns from Claude Code
-
-| Pattern | Claude Code | Deep Researcher |
-|---|---|---|
-| **Agentic loop** | `queryLoop()` in query.ts | `research()` in agent.py |
-| **Tool abstraction** | `buildTool()` with schema + execute | `Tool` class with schema + `execute()` → `ToolResult` |
-| **Concurrent execution** | `partitionToolCalls()` batching | `execute_concurrent()` via ThreadPoolExecutor |
-| **Structured results** | `ToolResult<T>` with data + messages | `ToolResult` with text + papers |
-| **Paper dedup** | File content hashing | DOI/arXiv/PMID keys with metadata merging |
-| **Retry/recovery** | Exponential backoff + reactive compact | Exponential backoff on 429/5xx per tool |
-
-### Tools
-
-| Tool | Database | Coverage |
-|---|---|---|
-| `search_arxiv` | arXiv | Preprints: CS, physics, math, engineering, biology |
-| `search_semantic_scholar` | Semantic Scholar | 200M+ papers, all fields, citation counts |
-| `search_openalex` | OpenAlex | 250M+ works, fully open metadata |
-| `search_crossref` | CrossRef | 150M+ DOI records (Elsevier, Springer, IEEE, Wiley) |
-| `search_pubmed` | PubMed | 36M+ biomedical and life sciences |
-| `search_core` | CORE | 300M+ open access articles |
-| `get_paper_details` | Semantic Scholar | Detailed info for a specific paper by DOI |
-| `get_citations` | Semantic Scholar | Citation chains (who cites this / what this cites) |
-| `find_open_access` | Unpaywall | Find free legal copies of paywalled papers |
-
-### How it compares
-
-| | GPT Researcher | STORM | local-deep-research | **Deep Researcher** |
-|---|---|---|---|---|
-| Architecture | LangChain + Tavily | DSPy pipeline | LangChain + LangGraph | Raw agentic loop |
-| Academic DBs | 0 (web search) | 0 (web search) | 3 | **6+** |
-| Dependencies | ~50+ | ~30+ | ~50+ | **3** |
-| Codebase | ~15K+ lines | ~10K+ lines | ~15K+ lines | **~1.5K lines** |
-| Citation output | Links | Inline | Links | **BibTeX + numbered** |
-| Concurrent search | Yes | Yes | Partial | **Yes** |
-| Paper dedup | No | No | No | **Yes (DOI/ID merge)** |
-| Citation chains | No | No | No | **Yes** |
-| Open access check | No | No | No | **Yes (Unpaywall)** |
+---
 
 ## Configuration
 
-### Environment Variables
+### Config File (recommended)
 
-| Variable | Default | Description |
-|---|---|---|
-| `DEEP_RESEARCH_MODEL` | `llama3.1` | LLM model name |
-| `OPENAI_BASE_URL` | `http://localhost:11434/v1` | API endpoint |
-| `OPENAI_API_KEY` | `ollama` | API key |
-| `DEEP_RESEARCH_MAX_ITER` | `20` | Max agentic loop iterations |
-| `DEEP_RESEARCH_OUTPUT` | `./output` | Output directory |
-| `DEEP_RESEARCH_EMAIL` | (empty) | Email for polite API access |
-| `CORE_API_KEY` | (empty) | Free API key from [CORE](https://core.ac.uk/api-keys/register) |
-
-### Config File
-
-Create `~/.deep-researcher/config.json` for persistent settings:
+Create `~/.deep-researcher/config.json`:
 
 ```json
 {
@@ -198,21 +183,49 @@ Create `~/.deep-researcher/config.json` for persistent settings:
 }
 ```
 
-Environment variables override config file. CLI args override both.
+### Environment Variables
 
-## Recommended Models
+| Variable | Default | Description |
+|---|---|---|
+| `DEEP_RESEARCH_MODEL` | `llama3.1` | LLM model name |
+| `OPENAI_BASE_URL` | `http://localhost:11434/v1` | API endpoint |
+| `OPENAI_API_KEY` | `ollama` | API key |
+| `DEEP_RESEARCH_MAX_ITER` | `20` | Max iterations |
+| `DEEP_RESEARCH_EMAIL` | — | Email for polite API pool |
+| `CORE_API_KEY` | — | Free key from [CORE](https://core.ac.uk/api-keys/register) |
+
+Priority: CLI args > environment variables > config file > defaults.
+
+### Recommended Models
 
 | Provider | Model | Notes |
 |---|---|---|
 | Ollama | `llama3.1` | Good function calling, runs locally |
 | Ollama | `qwen2.5:14b` | Excellent function calling |
 | OpenAI | `gpt-4o` | Best overall quality |
-| OpenAI | `gpt-4o-mini` | Good balance of speed and quality |
-| Anthropic | `claude-sonnet-4-20250514` | Excellent research synthesis |
+| OpenAI | `gpt-4o-mini` | Good speed/quality balance |
+| Anthropic | `claude-sonnet-4-20250514` | Excellent synthesis |
+
+---
+
+## How It Compares
+
+| | GPT Researcher | STORM | local-deep-research | **Deep Researcher** |
+|---|---|---|---|---|
+| Academic databases | 0 (web only) | 0 (web only) | 3 | **6** |
+| Citation chains | No | No | No | **Yes** |
+| Open access check | No | No | No | **Yes** |
+| Paper deduplication | No | No | No | **Yes** |
+| BibTeX output | No | No | No | **Yes** |
+| Dependencies | ~50+ | ~30+ | ~50+ | **3** |
+| Lines of code | ~15K | ~10K | ~15K | **~1.5K** |
+| Runs locally | Partial | Partial | Yes | **Yes** |
+
+---
 
 ## Extending
 
-Adding a new database:
+Adding a new database is one file:
 
 ```python
 from deep_researcher.tools.base import Tool
@@ -235,8 +248,72 @@ class MyDatabaseTool(Tool):
         return ToolResult(text=text, papers=papers)
 ```
 
-Register it in `src/deep_researcher/tools/__init__.py`.
+Register it in `src/deep_researcher/tools/__init__.py` and it's immediately available to the agent.
+
+---
+
+## How This Was Built
+
+This project started as a study of **Claude Code's source code** — Anthropic's CLI for Claude, which became [publicly accessible](https://x.com/Fried_rice/status/2038894956459290963) on March 31, 2026 through a source map exposure in the npm distribution (~512K lines of TypeScript).
+
+While analyzing the architecture, several patterns stood out as broadly applicable beyond coding assistants:
+
+1. **The agentic tool-call loop** (`queryLoop()` in `query.ts`) — a while loop where the LLM calls tools, gets results, and decides what to do next. Simple but powerful.
+2. **Concurrent tool execution** (`partitionToolCalls()` in `toolOrchestration.ts`) — read-only tools run in parallel, write tools run serially. Cuts latency dramatically.
+3. **Structured tool results** (`ToolResult<T>` in `Tool.ts`) — tools return typed data alongside human-readable text, enabling proper tracking without parsing.
+4. **Retry with exponential backoff** — every external call handles rate limits and transient failures gracefully.
+
+The question was: **what if you applied these production-tested patterns to academic research instead of code editing?**
+
+The result is Deep Researcher — a clean-room Python implementation (~1,500 lines, 3 dependencies) that uses the same architectural DNA as Claude Code but pointed at academic databases instead of file systems. No code was copied; just the design patterns that make agentic systems reliable in production.
+
+### Architecture Mapping
+
+| Claude Code (TypeScript) | Deep Researcher (Python) |
+|---|---|
+| `queryLoop()` in `query.ts` | `research()` in `agent.py` |
+| `buildTool()` with schema + execute | `Tool` class + `execute()` → `ToolResult` |
+| `partitionToolCalls()` batching | `execute_concurrent()` via ThreadPoolExecutor |
+| `ToolResult<T>` with data + messages | `ToolResult` with text + papers |
+| `ToolRegistry` with deny rules | `ToolRegistry` with schema export |
+| Exponential backoff on API errors | Same, across all 9 tools |
+
+### Built With
+
+The entire project — from initial architecture study through implementation to this README — was built in a single session using [Claude Code](https://claude.ai/claude-code) (Claude Opus 4.6). The agentic patterns we studied in Claude Code's source were implemented by Claude Code itself.
+
+---
+
+## Project Structure
+
+```
+src/deep_researcher/
+  __main__.py          # CLI entry point
+  agent.py             # Agentic research loop (core)
+  llm.py               # OpenAI-compatible LLM client
+  config.py            # Config file + env var loading
+  models.py            # Paper, ToolResult data models
+  report.py            # Report + BibTeX + JSON generation
+  tools/
+    base.py            # Tool base class + concurrent registry
+    arxiv_search.py    # arXiv API
+    semantic_scholar.py # Semantic Scholar + citation chains
+    openalex.py        # OpenAlex API
+    crossref.py        # CrossRef API
+    pubmed.py          # PubMed E-utilities
+    core_search.py     # CORE API
+    paper_details.py   # Paper lookup by DOI
+    open_access.py     # Unpaywall open access check
+```
+
+---
 
 ## License
 
 MIT
+
+---
+
+<p align="center">
+  <sub>Built by studying how the best agentic systems work, then applying those patterns where they're needed most.</sub>
+</p>
