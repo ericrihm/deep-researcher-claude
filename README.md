@@ -1,25 +1,26 @@
-<div align="center">
-  <h1>
-    <img src="assets/logo.svg" width="64" alt="Deep Researcher" align="absmiddle">&nbsp;&nbsp;Deep Researcher
-  </h1>
-  <p>
-    <strong>An agentic academic research assistant that searches 8 databases (open and paywalled), follows citation chains, and writes structured literature reviews.</strong>
-  </p>
-  <p>
-    <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python 3.10+"></a>
-    <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License: MIT"></a>
-    <img src="https://img.shields.io/badge/dependencies-3-brightgreen.svg" alt="Dependencies: 3">
-    <img src="https://img.shields.io/badge/lines_of_code-~1.5K-blue.svg" alt="LOC: ~1.5K">
-    <img src="https://img.shields.io/badge/databases-8-orange.svg" alt="Databases: 8">
-  </p>
-  <p>
-    <a href="#quick-start">Quick Start</a> &middot;
-    <a href="#how-it-works">How It Works</a> &middot;
-    <a href="#sample-output">Sample Output</a> &middot;
-    <a href="#configuration">Configuration</a> &middot;
-    <a href="#how-this-was-built">Origin Story</a>
-  </p>
-</div>
+<h1 align="center">
+  <img src="assets/logo.svg" width="64" alt="Deep Researcher" align="absmiddle">&nbsp;&nbsp;Deep Researcher
+</h1>
+
+<p align="center">
+  <strong>An agentic academic research assistant that searches 8 databases (open and paywalled), follows citation chains, and writes structured literature reviews.</strong>
+</p>
+
+<p align="center">
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python 3.10+"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License: MIT"></a>
+  <img src="https://img.shields.io/badge/dependencies-3-brightgreen.svg" alt="Dependencies: 3">
+  <img src="https://img.shields.io/badge/lines_of_code-~1.5K-blue.svg" alt="LOC: ~1.5K">
+  <img src="https://img.shields.io/badge/databases-8-orange.svg" alt="Databases: 8">
+</p>
+
+<p align="center">
+  <a href="#quick-start">Quick Start</a> &middot;
+  <a href="#how-it-works">How It Works</a> &middot;
+  <a href="#sample-output">Sample Output</a> &middot;
+  <a href="#configuration">Configuration</a> &middot;
+  <a href="#how-this-was-built">Origin Story</a>
+</p>
 
 ---
 
