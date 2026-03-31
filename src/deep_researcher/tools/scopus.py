@@ -61,10 +61,11 @@ class ScopusSearchTool(Tool):
                         "query": query,
                         "count": max_results,
                         "sort": "relevancy",
-                        "field": "dc:title,dc:creator,prism:coverDate,dc:description,"
-                                 "prism:doi,citedby-count,prism:publicationName,"
-                                 "prism:volume,prism:pageRange,prism:aggregationType,"
-                                 "subtypeDescription,openaccessFlag,link",
+                        "field": "dc:title,dc:creator,author,prism:coverDate,"
+                                 "dc:description,prism:doi,citedby-count,"
+                                 "prism:publicationName,prism:volume,prism:pageRange,"
+                                 "prism:aggregationType,subtypeDescription,"
+                                 "openaccessFlag,link",
                     },
                     headers={
                         "X-ELS-APIKey": self._api_key,
@@ -104,11 +105,20 @@ def _parse_scopus_entry(data: dict) -> Paper | None:
     if not title or data.get("error"):
         return None
 
-    # Author: Scopus search returns first author in dc:creator
+    # Try structured author list first, fall back to dc:creator (first author only)
     authors = []
-    creator = data.get("dc:creator")
-    if creator:
-        authors.append(creator)
+    author_list = data.get("author", [])
+    if isinstance(author_list, list):
+        for a in author_list:
+            if isinstance(a, dict):
+                name = a.get("authname") or a.get("given-name", "") + " " + a.get("surname", "")
+                name = name.strip()
+                if name:
+                    authors.append(name)
+    if not authors:
+        creator = data.get("dc:creator")
+        if creator:
+            authors.append(creator)
 
     # Year from cover date (format: YYYY-MM-DD)
     year = None
