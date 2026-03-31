@@ -32,6 +32,8 @@ class Config:
     output_dir: str = "./output"
     email: str = ""
     core_api_key: str = ""
+    scopus_api_key: str = ""
+    ieee_api_key: str = ""
     breadth: int = 3
     depth: int = 2
     timeout: int = 60
@@ -49,6 +51,10 @@ class Config:
             self.email = _get(file_cfg, "email", "DEEP_RESEARCH_EMAIL", "")
         if not self.core_api_key:
             self.core_api_key = _get(file_cfg, "core_api_key", "CORE_API_KEY", "")
+        if not self.scopus_api_key:
+            self.scopus_api_key = _get(file_cfg, "scopus_api_key", "SCOPUS_API_KEY", "")
+        if not self.ieee_api_key:
+            self.ieee_api_key = _get(file_cfg, "ieee_api_key", "IEEE_API_KEY", "")
 
         iter_str = os.getenv("DEEP_RESEARCH_MAX_ITER") or str(file_cfg.get("max_iterations", ""))
         if iter_str:
