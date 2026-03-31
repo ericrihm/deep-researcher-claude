@@ -8,7 +8,12 @@ from deep_researcher.config import Config
 
 class LLMClient:
     def __init__(self, config: Config) -> None:
-        self.client = OpenAI(base_url=config.base_url, api_key=config.api_key)
+        self.client = OpenAI(
+            base_url=config.base_url,
+            api_key=config.api_key,
+            timeout=float(config.timeout),
+            max_retries=2,
+        )
         self.model = config.model
 
     def chat(
@@ -24,4 +29,6 @@ class LLMClient:
             kwargs["tools"] = tools
             kwargs["tool_choice"] = "auto"
         response = self.client.chat.completions.create(**kwargs)
+        if not response.choices:
+            raise RuntimeError("LLM returned no choices")
         return response.choices[0].message

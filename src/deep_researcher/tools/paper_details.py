@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import re
+import time
+
 import httpx
 
-from deep_researcher.models import Paper
+from deep_researcher.models import Paper, ToolResult, clean_abstract
 from deep_researcher.tools.base import Tool
 
 S2_BASE = "https://api.semanticscholar.org/graph/v1"
 S2_FIELDS = "title,authors,year,abstract,doi,url,citationCount,journal,externalIds,tldr"
+
+_RETRIABLE_STATUSES = {429, 500, 502, 503}
 
 
 class PaperDetailsTool(Tool):
@@ -27,23 +32,32 @@ class PaperDetailsTool(Tool):
         "required": ["paper_id"],
     }
 
-    def execute(self, paper_id: str) -> str:
-        if "/" in paper_id and not paper_id.startswith(("ARXIV:", "DOI:", "PMID:", "ACL:")):
+    def execute(self, paper_id: str) -> ToolResult:
+        # Better DOI detection: DOIs start with "10.<digits>/"
+        if re.match(r"^10\.\d+/", paper_id) and not paper_id.startswith(("DOI:", "PMID:", "ACL:")):
             paper_id = f"DOI:{paper_id}"
 
         try:
-            resp = httpx.get(
-                f"{S2_BASE}/paper/{paper_id}",
-                params={"fields": S2_FIELDS},
-                timeout=30,
-            )
+            resp = None
+            for attempt in range(3):
+                resp = httpx.get(
+                    f"{S2_BASE}/paper/{paper_id}",
+                    params={"fields": S2_FIELDS},
+                    timeout=30,
+                )
+                if resp.status_code in _RETRIABLE_STATUSES:
+                    time.sleep(2 ** (attempt + 1))
+                    continue
+                break
+            if resp.status_code == 404:
+                return ToolResult(text=f"Paper not found: {paper_id}")
             resp.raise_for_status()
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
-                return f"Paper not found: {paper_id}"
-            return f"Error fetching paper details: {e}"
+                return ToolResult(text=f"Paper not found: {paper_id}")
+            return ToolResult(text=f"Error fetching paper details: {e}")
         except httpx.HTTPError as e:
-            return f"Error fetching paper details: {e}"
+            return ToolResult(text=f"Error fetching paper details: {e}")
 
         data = resp.json()
         external_ids = data.get("externalIds") or {}
@@ -53,11 +67,13 @@ class PaperDetailsTool(Tool):
         tldr = data.get("tldr")
         tldr_text = tldr.get("text") if isinstance(tldr, dict) else None
 
+        abstract = clean_abstract(data.get("abstract"))
+
         paper = Paper(
             title=data.get("title", ""),
             authors=authors,
             year=data.get("year"),
-            abstract=data.get("abstract"),
+            abstract=abstract,
             doi=external_ids.get("DOI") or data.get("doi"),
             url=data.get("url"),
             source="semantic_scholar",
@@ -70,4 +86,4 @@ class PaperDetailsTool(Tool):
         parts = ["Paper details:\n", paper.to_summary()]
         if tldr_text:
             parts.append(f"\nTLDR: {tldr_text}")
-        return "\n".join(parts)
+        return ToolResult(text="\n".join(parts), papers=[paper])

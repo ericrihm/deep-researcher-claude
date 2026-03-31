@@ -1,89 +1,101 @@
 from __future__ import annotations
 
-import re
-
 from rich.console import Console
 from rich.panel import Panel
+from rich.table import Table
 
 from deep_researcher.config import Config
 from deep_researcher.llm import LLMClient
 from deep_researcher.models import Paper
 from deep_researcher.report import save_report
 from deep_researcher.tools import build_tool_registry
-from deep_researcher.tools.base import ToolRegistry
 
-SYSTEM_PROMPT = """\
+
+def _build_system_prompt(config: Config) -> str:
+    return f"""\
 You are an academic research assistant that conducts systematic literature reviews. \
 Given a research question, you search academic databases, analyze papers, and produce \
 comprehensive reviews with proper citations.
 
-## Your Research Process
+## Your Research Process — Three Phases
 
-1. **Understand** the research question — identify key concepts, relevant fields, and potential search terms
-2. **Search broadly** — query multiple databases with varied search terms to ensure comprehensive coverage
-3. **Analyze results** — read abstracts and metadata to identify the most relevant papers
-4. **Follow citation chains** — for key papers, use get_citations to find foundational and recent related work
-5. **Iterate** — refine your search based on what you discover. Use different terminology across databases.
-6. **Check open access** — for important papers, use find_open_access to check for free versions
-7. **Synthesize** — when you have sufficient coverage (typically 15-30 relevant papers), produce your review
+### Phase 1: DISCOVERY (first ~{config.breadth * 2} tool calls)
+- Break the research question into {config.breadth} different search queries using varied terminology
+- Search at least 3 different databases per query variant
+- Aim to discover 20-40 candidate papers across all databases
+- Use broad queries first, then narrow based on what you find
+
+### Phase 2: DEEP DIVE (next ~{config.depth * 3} tool calls)
+- For the top {config.depth * 3} most-cited or most-relevant papers, follow citation chains using get_citations
+- Get detailed info with get_paper_details on papers that appear across multiple searches
+- Look specifically for survey/review papers — they provide excellent field overviews
+- Check find_open_access for key papers
+
+### Phase 3: SYNTHESIS (final response)
+- You now have enough material — stop searching and write the literature review
+- Organize by theme, not paper-by-paper
+- Include proper numbered citations
+
+## When to Stop Searching
+Stop and synthesize when ANY of these are true:
+- You have found 15-30 relevant papers with good coverage
+- New searches mostly return papers you have already seen (diminishing returns)
+- You have covered at least 3 databases
+- You have followed citation chains for the most important papers
 
 ## Available Databases
 
 - **arXiv**: Preprints in physics, math, CS, engineering, biology, economics, statistics
 - **Semantic Scholar**: 200M+ papers across all fields, with citation counts and TLDR summaries
 - **OpenAlex**: 250M+ works, fully open, excellent metadata coverage
-- **CrossRef**: 150M+ records from major publishers (Elsevier, Springer, IEEE, Wiley, etc.)
+- **CrossRef**: 150M+ records from major publishers (Elsevier, Springer, Wiley, IEEE, etc.)
 - **PubMed**: 36M+ biomedical and life sciences citations
 - **CORE**: 300M+ open access articles (requires API key)
 
 ## Research Strategies
 
-- Start with broad queries, then narrow based on findings
-- Use different terminology/synonyms across databases — different fields use different terms
-- Search at least 3 different databases for comprehensive coverage
-- Follow citation chains from the most relevant papers you find
-- Look for review/survey papers — they provide excellent overviews of a field
-- Note the chronological development of the field
+- Use different terminology/synonyms across databases — different fields use different terms for similar concepts
+- Pay attention to citation counts as a signal of influence
+- Look for both seminal/foundational papers AND recent developments
+- Note contradictions or debates between papers
+- Identify the most common methodologies used in the field
 
 ## Final Report Format
 
-When you have gathered enough information, produce a structured literature review as your final response:
+Produce a structured literature review as your final response (no tool calls):
 
 ### [Research Topic]: A Literature Review
 
 #### 1. Introduction
-Brief overview of the research question and why it matters.
+Brief overview of the research question and its significance.
 
 #### 2. Methodology
-Databases searched, search queries used, number of papers reviewed, selection criteria.
+Databases searched, search queries used, number of papers reviewed.
 
 #### 3. Thematic Analysis
 Organize findings by theme or sub-topic (NOT paper-by-paper). For each theme:
-- Key findings across papers
-- Notable methodologies
+- Key findings across multiple papers
+- Notable methodologies used
 - Points of agreement and debate
 
 #### 4. Chronological Development
-How has this field evolved? Key milestones and shifts.
+How has this field evolved? Key milestones and paradigm shifts.
 
 #### 5. Research Gaps and Future Directions
-What hasn't been studied? Where are the opportunities?
+What remains understudied? Where are the opportunities?
 
 #### 6. Key Papers
-List the 10-15 most important papers with brief annotations explaining why each matters.
+List the 10-15 most important papers with brief annotations explaining significance.
 
 #### 7. References
-Full numbered reference list. Format: [N] Authors (Year). Title. Journal. DOI.
+Full numbered reference list. Format: [N] Authors (Year). Title. Journal. DOI: xxx
 
-## Important Guidelines
+## Critical Rules
 
-- Be thorough but focused — quality over quantity
-- Always cite specific papers when making claims
-- Note methodology types (experimental, computational, review, case study, etc.)
-- Identify seminal/foundational papers vs. recent developments
-- Flag contradictions or debates in the literature
-- Be honest about limitations of your search
-- Do NOT make up or hallucinate papers — only cite papers you actually found via the tools
+- ONLY cite papers you actually found via the search tools — never hallucinate references
+- Be honest about limitations of your search coverage
+- Note methodology types: experimental, computational, review, theoretical, case study
+- Flag peer-review status where known (preprint vs. published)
 """
 
 
@@ -94,18 +106,25 @@ class ResearchAgent:
         self.registry = build_tool_registry(config)
         self.papers: dict[str, Paper] = {}
         self.console = Console()
+        self._databases_used: set[str] = set()
+        self._tool_call_count = 0
 
     def research(self, query: str) -> str:
-        self.console.print(Panel(f"[bold]{query}[/bold]", title="Research Query", border_style="blue"))
+        self.console.print(Panel(
+            f"[bold]{query}[/bold]\n[dim]breadth={self.config.breadth}  depth={self.config.depth}  max_iter={self.config.max_iterations}[/dim]",
+            title="Deep Researcher",
+            border_style="blue",
+        ))
 
+        system_prompt = _build_system_prompt(self.config)
         messages: list[dict] = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": f"Please conduct a comprehensive literature review on the following research question:\n\n{query}"},
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Please conduct a comprehensive literature review on:\n\n{query}"},
         ]
         tool_schemas = self.registry.schemas()
 
         for iteration in range(1, self.config.max_iterations + 1):
-            self.console.print(f"\n[dim]--- Iteration {iteration}/{self.config.max_iterations} ---[/dim]")
+            self.console.print(f"\n[dim]--- Iteration {iteration}/{self.config.max_iterations} | {len(self.papers)} papers | {len(self._databases_used)} databases ---[/dim]")
 
             try:
                 response = self.llm.chat(messages, tools=tool_schemas)
@@ -113,38 +132,55 @@ class ResearchAgent:
                 self.console.print(f"[red]LLM error: {e}[/red]")
                 break
 
+            # No tool calls = LLM is done, final report
             if not response.tool_calls:
                 report = response.content or ""
-                self.console.print(f"\n[green]Research complete. Collected {len(self.papers)} unique papers.[/green]")
+                self._print_summary()
                 self._save(query, report)
                 return report
 
             messages.append(_message_to_dict(response))
 
-            for tool_call in response.tool_calls:
-                name = tool_call.function.name
-                args = tool_call.function.arguments
-                self.console.print(f"  [cyan]Calling {name}[/cyan] with {_truncate(args, 100)}")
+            # Execute tool calls concurrently (Claude Code pattern)
+            tc_list = [
+                {"id": tc.id, "name": tc.function.name, "arguments": tc.function.arguments}
+                for tc in response.tool_calls
+            ]
 
-                result = self.registry.execute(name, args)
-                self._extract_papers(result)
+            if len(tc_list) > 1:
+                self.console.print(f"  [cyan]Executing {len(tc_list)} tools concurrently...[/cyan]")
+                results = self.registry.execute_concurrent(tc_list)
+            else:
+                results = []
+                for tc in tc_list:
+                    result = self.registry.execute(tc["name"], tc["arguments"])
+                    results.append((tc["id"], result))
+
+            for call_id, result in results:
+                tc_info = next(tc for tc in tc_list if tc["id"] == call_id)
+                self._tool_call_count += 1
+                self.console.print(f"  [cyan]{tc_info['name']}[/cyan] -> {_truncate(result.text, 100)}")
+
+                # Collect structured papers (no more regex parsing!)
+                for paper in result.papers:
+                    self._track_paper(paper)
 
                 messages.append({
                     "role": "tool",
-                    "tool_call_id": tool_call.id,
-                    "content": result,
+                    "tool_call_id": call_id,
+                    "content": result.text,
                 })
-                self.console.print(f"  [dim]  -> {_truncate(result, 120)}[/dim]")
 
-            self.console.print(f"  [yellow]Papers collected: {len(self.papers)}[/yellow]")
+            self.console.print(f"  [yellow]Total: {len(self.papers)} unique papers from {len(self._databases_used)} databases[/yellow]")
 
-        self.console.print("\n[yellow]Max iterations reached — forcing synthesis...[/yellow]")
+        # Max iterations — force synthesis
+        self.console.print("\n[yellow]Max iterations reached — synthesizing...[/yellow]")
         messages.append({
             "role": "user",
             "content": (
                 "You have reached the maximum number of search iterations. "
-                "Please synthesize all the papers you have found so far into "
-                "your final literature review report now."
+                f"You have found {len(self.papers)} papers across {len(self._databases_used)} databases. "
+                "Please synthesize all findings into your final literature review now."
             ),
         })
         try:
@@ -153,38 +189,44 @@ class ResearchAgent:
         except Exception as e:
             report = f"Error generating final report: {e}"
 
+        self._print_summary()
         self._save(query, report)
         return report
 
-    def _extract_papers(self, tool_result: str) -> None:
-        """Rough extraction of paper info from tool results to track unique papers."""
-        if tool_result.startswith("Error") or "No papers found" in tool_result:
-            return
+    def _track_paper(self, paper: Paper) -> None:
+        key = paper.unique_key
+        if key in self.papers:
+            self.papers[key].merge(paper)
+        else:
+            self.papers[key] = paper
+        for src in paper.source.split(","):
+            src = src.strip()
+            if src:
+                self._databases_used.add(src)
 
-        # Papers are already tracked by the tools themselves,
-        # but we do a lightweight parse to count unique papers by title
-        for line in tool_result.split("\n"):
-            if line.startswith("**") and line.endswith("**"):
-                title = line.strip("*").strip()
-                if title:
-                    p = Paper(title=title, source="extracted")
-                    key = p.unique_key
-                    if key not in self.papers:
-                        self.papers[key] = p
-            elif "DOI:" in line:
-                doi_match = re.search(r"DOI:\s*(\S+)", line)
-                if doi_match:
-                    doi = doi_match.group(1)
-                    key = f"doi:{doi.lower()}"
-                    if key not in self.papers:
-                        self.papers[key] = Paper(title="", doi=doi, source="extracted")
+    def _print_summary(self) -> None:
+        self.console.print(f"\n[green]Research complete.[/green]")
+        table = Table(title="Research Summary", show_header=False, border_style="green")
+        table.add_row("Papers found", str(len(self.papers)))
+        table.add_row("Databases searched", ", ".join(sorted(self._databases_used)))
+        table.add_row("Tool calls made", str(self._tool_call_count))
+
+        years = [p.year for p in self.papers.values() if p.year]
+        if years:
+            table.add_row("Year range", f"{min(years)}-{max(years)}")
+
+        oa_count = sum(1 for p in self.papers.values() if p.open_access_url)
+        if oa_count:
+            table.add_row("Open access", f"{oa_count}/{len(self.papers)}")
+
+        self.console.print(table)
 
     def _save(self, query: str, report: str) -> None:
         if not report.strip():
             return
         try:
             paths = save_report(query, report, self.papers, self.config.output_dir)
-            self.console.print(f"\n[green bold]Report saved:[/green bold]")
+            self.console.print(f"\n[green bold]Files saved:[/green bold]")
             for label, path in paths.items():
                 self.console.print(f"  {label}: [blue]{path}[/blue]")
         except Exception as e:

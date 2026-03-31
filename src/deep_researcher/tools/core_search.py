@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import time
+
 import httpx
 
-from deep_researcher.models import Paper
+from deep_researcher.models import Paper, ToolResult, clean_abstract
 from deep_researcher.tools.base import Tool
 
 CORE_BASE = "https://api.core.ac.uk/v3"
+
+_RETRIABLE_STATUSES = {429, 500, 502, 503}
 
 
 class CoreSearchTool(Tool):
@@ -30,47 +34,71 @@ class CoreSearchTool(Tool):
     def __init__(self, api_key: str = "") -> None:
         self._api_key = api_key
 
-    def execute(self, query: str, max_results: int = 10) -> str:
+    def execute(self, query: str, max_results: int = 10) -> ToolResult:
         if not self._api_key:
-            return "CORE search is not available — no API key configured. Set CORE_API_KEY environment variable with a free key from https://core.ac.uk/api-keys/register."
+            return ToolResult(
+                text="CORE search is not available — no API key configured. Set CORE_API_KEY environment variable with a free key from https://core.ac.uk/api-keys/register."
+            )
 
         max_results = min(max_results, 20)
         try:
-            resp = httpx.get(
-                f"{CORE_BASE}/search/works",
-                params={"q": query, "limit": max_results},
-                headers={"Authorization": f"Bearer {self._api_key}"},
-                timeout=30,
-            )
+            resp = None
+            for attempt in range(3):
+                resp = httpx.get(
+                    f"{CORE_BASE}/search/works",
+                    params={"q": query, "limit": max_results},
+                    headers={"Authorization": f"Bearer {self._api_key}"},
+                    timeout=30,
+                )
+                if resp.status_code in _RETRIABLE_STATUSES:
+                    time.sleep(2 ** (attempt + 1))
+                    continue
+                break
             resp.raise_for_status()
         except httpx.HTTPError as e:
-            return f"Error searching CORE: {e}"
+            return ToolResult(text=f"Error searching CORE: {e}")
 
         data = resp.json()
         results = data.get("results", [])
         if not results:
-            return "No papers found on CORE for this query."
+            return ToolResult(text="No papers found on CORE for this query.")
 
         papers = [_parse_core_work(w) for w in results]
         lines = [f"Found {len(papers)} open access papers on CORE:\n"]
         for i, p in enumerate(papers, 1):
             lines.append(f"{i}. {p.to_summary()}\n")
-        return "\n".join(lines)
+        return ToolResult(text="\n".join(lines), papers=papers)
 
 
 def _parse_core_work(data: dict) -> Paper:
     title = data.get("title", "")
-    authors = [a.get("name", "") for a in data.get("authors", []) if a.get("name")]
+
+    authors = []
+    for a in data.get("authors", []):
+        name = a.get("name", "")
+        if not name:
+            # Fallback: some CORE records use first_name / last_name
+            first = a.get("first_name", "")
+            last = a.get("last_name", "")
+            name = f"{first} {last}".strip()
+        if name:
+            authors.append(name)
+
     year = data.get("yearPublished")
-    abstract = data.get("abstract")
+    abstract = clean_abstract(data.get("abstract"))
     doi = data.get("doi")
 
     download_url = data.get("downloadUrl")
-    source_url = data.get("sourceFulltextUrls", [None])
-    url = download_url or (source_url[0] if source_url else None)
 
-    journal_info = data.get("journals", [{}])
-    journal = journal_info[0].get("title") if journal_info else None
+    source_urls = data.get("sourceFulltextUrls")
+    if isinstance(source_urls, list) and source_urls:
+        fallback_url = source_urls[0]
+    else:
+        fallback_url = None
+    url = download_url or fallback_url
+
+    journals = data.get("journals") or []
+    journal = journals[0].get("title") if journals else None
 
     return Paper(
         title=title,

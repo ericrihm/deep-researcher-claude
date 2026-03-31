@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import time
+
 import httpx
 
-from deep_researcher.models import Paper
+from deep_researcher.models import Paper, ToolResult, clean_abstract
 from deep_researcher.tools.base import Tool
 
 OPENALEX_BASE = "https://api.openalex.org"
+
+_RETRIABLE_STATUSES = {429, 500, 502, 503}
 
 
 class OpenAlexSearchTool(Tool):
@@ -30,39 +34,48 @@ class OpenAlexSearchTool(Tool):
     def __init__(self, email: str = "") -> None:
         self._email = email
 
-    def execute(self, query: str, max_results: int = 10) -> str:
+    def execute(self, query: str, max_results: int = 10) -> ToolResult:
         max_results = min(max_results, 25)
         params: dict = {"search": query, "per_page": max_results}
         if self._email:
             params["mailto"] = self._email
 
         try:
-            resp = httpx.get(f"{OPENALEX_BASE}/works", params=params, timeout=30)
+            resp = None
+            for attempt in range(3):
+                resp = httpx.get(f"{OPENALEX_BASE}/works", params=params, timeout=30)
+                if resp.status_code in _RETRIABLE_STATUSES:
+                    time.sleep(2 ** (attempt + 1))
+                    continue
+                break
             resp.raise_for_status()
         except httpx.HTTPError as e:
-            return f"Error searching OpenAlex: {e}"
+            return ToolResult(text=f"Error searching OpenAlex: {e}")
 
         data = resp.json()
         results = data.get("results", [])
         if not results:
-            return "No papers found on OpenAlex for this query."
+            return ToolResult(text="No papers found on OpenAlex for this query.")
 
         papers = [_parse_openalex_work(w) for w in results]
         lines = [f"Found {len(papers)} papers on OpenAlex:\n"]
         for i, p in enumerate(papers, 1):
             lines.append(f"{i}. {p.to_summary()}\n")
-        return "\n".join(lines)
+        return ToolResult(text="\n".join(lines), papers=papers)
 
 
 def _reconstruct_abstract(inverted_index: dict | None) -> str | None:
     if not inverted_index:
         return None
-    word_positions: list[tuple[int, str]] = []
-    for word, positions in inverted_index.items():
-        for pos in positions:
-            word_positions.append((pos, word))
-    word_positions.sort()
-    return " ".join(w for _, w in word_positions)
+    try:
+        word_positions: list[tuple[int, str]] = []
+        for word, positions in inverted_index.items():
+            for pos in positions:
+                word_positions.append((pos, word))
+        word_positions.sort()
+        return " ".join(w for _, w in word_positions)
+    except (TypeError, ValueError, AttributeError):
+        return None
 
 
 def _parse_openalex_work(data: dict) -> Paper:
@@ -77,8 +90,13 @@ def _parse_openalex_work(data: dict) -> Paper:
 
     year = data.get("publication_year")
     doi_url = data.get("doi") or ""
-    doi = doi_url.replace("https://doi.org/", "") if doi_url else None
-    abstract = _reconstruct_abstract(data.get("abstract_inverted_index"))
+    doi = None
+    if doi_url:
+        doi = doi_url.replace("https://doi.org/", "").replace("http://doi.org/", "")
+
+    raw_abstract = _reconstruct_abstract(data.get("abstract_inverted_index"))
+    abstract = clean_abstract(raw_abstract)
+
     cited_by = data.get("cited_by_count")
 
     source = data.get("primary_location", {}) or {}
@@ -98,5 +116,5 @@ def _parse_openalex_work(data: dict) -> Paper:
         source="openalex",
         citation_count=cited_by,
         journal=journal,
-        open_access_url=oa_url,
+        open_access_url=oa_url if oa_url else None,
     )

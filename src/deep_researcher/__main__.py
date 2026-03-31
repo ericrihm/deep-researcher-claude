@@ -22,6 +22,8 @@ def main() -> None:
     parser.add_argument("--max-iterations", type=int, default=None, help="Maximum research iterations (default: 20)")
     parser.add_argument("--output", default=None, help="Output directory (default: ./output)")
     parser.add_argument("--email", default=None, help="Email for polite API access to OpenAlex/CrossRef/Unpaywall")
+    parser.add_argument("--breadth", type=int, default=None, help="Search breadth: number of query variations (1-5, default: 3)")
+    parser.add_argument("--depth", type=int, default=None, help="Search depth: citation chain rounds (0-5, default: 2)")
     parser.add_argument("--version", action="version", version=f"deep-researcher {__version__}")
     args = parser.parse_args()
 
@@ -33,8 +35,10 @@ def main() -> None:
         console.print("Examples:")
         console.print('  deep-researcher "transformer models for structural health monitoring"')
         console.print('  deep-researcher "machine learning in drug discovery" --model gpt-4o')
-        console.print('  deep-researcher "CRISPR gene editing efficiency" --email you@university.edu')
-        console.print("\nRun deep-researcher --help for all options.")
+        console.print('  deep-researcher "CRISPR gene editing efficiency" --email you@uni.edu')
+        console.print('  deep-researcher "deep learning for NLP" --breadth 5 --depth 3')
+        console.print("\nConfig file: ~/.deep-researcher/config.json")
+        console.print("Run deep-researcher --help for all options.")
         sys.exit(0)
 
     config = Config()
@@ -50,18 +54,28 @@ def main() -> None:
         config.output_dir = args.output
     if args.email:
         config.email = args.email
+    if args.breadth is not None:
+        config.breadth = max(1, min(args.breadth, 5))
+    if args.depth is not None:
+        config.depth = max(0, min(args.depth, 5))
 
-    console.print(f"[dim]Model: {config.model} @ {config.base_url}[/dim]")
+    console.print(f"[dim]Model: {config.model} @ {config.base_url} | breadth={config.breadth} depth={config.depth}[/dim]")
 
     agent = ResearchAgent(config)
     try:
         report = agent.research(args.query)
         if report:
             console.print("\n")
-            from rich.markdown import Markdown
-            console.print(Markdown(report))
+            try:
+                from rich.markdown import Markdown
+                console.print(Markdown(report))
+            except Exception:
+                console.print(report)
     except KeyboardInterrupt:
-        console.print("\n[yellow]Research interrupted by user.[/yellow]")
+        console.print("\n[yellow]Research interrupted.[/yellow]")
+        if agent.papers:
+            console.print(f"[yellow]Saving {len(agent.papers)} papers collected so far...[/yellow]")
+            agent._save(args.query, "# Research Interrupted\n\nPartial results — research was interrupted before synthesis.")
         sys.exit(1)
 
 
