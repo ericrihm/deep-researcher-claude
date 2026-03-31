@@ -1,11 +1,19 @@
 <p align="center">
   <h1 align="center">Deep Researcher</h1>
   <p align="center">
-    <strong>An agentic academic research assistant that searches 6 databases and writes literature reviews.</strong>
+    <strong>An agentic academic research assistant that searches 6 databases, follows citation chains, and writes structured literature reviews.</strong>
+  </p>
+  <p align="center">
+    <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python 3.10+"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License: MIT"></a>
+    <img src="https://img.shields.io/badge/dependencies-3-brightgreen.svg" alt="Dependencies: 3">
+    <img src="https://img.shields.io/badge/lines_of_code-~1.5K-blue.svg" alt="LOC: ~1.5K">
+    <img src="https://img.shields.io/badge/databases-6-orange.svg" alt="Databases: 6">
   </p>
   <p align="center">
     <a href="#quick-start">Quick Start</a> &middot;
     <a href="#how-it-works">How It Works</a> &middot;
+    <a href="#sample-output">Sample Output</a> &middot;
     <a href="#configuration">Configuration</a> &middot;
     <a href="#how-this-was-built">Origin Story</a>
   </p>
@@ -19,6 +27,9 @@ It runs a real agentic loop — the LLM decides what to search next, when to dig
 
 **3 dependencies. ~1,500 lines. No LangChain.**
 
+> [!NOTE]
+> Deep Researcher searches **real academic databases** (Semantic Scholar, OpenAlex, arXiv, CrossRef, PubMed, CORE) — not the open web. This means every paper it finds actually exists. No hallucinated sources.
+
 ---
 
 ## Why This Exists
@@ -26,11 +37,15 @@ It runs a real agentic loop — the LLM decides what to search next, when to dig
 Existing tools like GPT Researcher and STORM are powerful but rely on **general web search** — great for current events, not for academic research. They miss the databases that matter: Semantic Scholar, OpenAlex, CrossRef, PubMed. They can't follow citation chains. They don't output BibTeX.
 
 Deep Researcher was built for **academics, grad students, and researchers** who need:
+
 - Proper coverage across real academic databases (not just Google)
 - Citation chains to find foundational and recent work
 - BibTeX output they can actually import into LaTeX/Overleaf
 - Open access detection for paywalled papers
-- A tool they can run locally with their own models
+- A tool they can run **100% locally** with their own models
+
+> [!TIP]
+> Unlike Gemini or ChatGPT deep research, Deep Researcher doesn't give you a history lesson. It **categorizes papers, synthesizes across groups, and identifies gaps** — like Connected Papers, but with analysis.
 
 ---
 
@@ -58,11 +73,11 @@ deep-researcher "applications of transformer models in structural health monitor
 export OPENAI_API_KEY="sk-..."
 deep-researcher "machine learning for drug discovery" --provider openai
 
-# Groq (fast, free tier)
+# Groq (fast, free tier available)
 export OPENAI_API_KEY="gsk_..."
 deep-researcher "CRISPR gene editing" --provider groq
 
-# DeepSeek
+# DeepSeek (affordable)
 export OPENAI_API_KEY="sk-..."
 deep-researcher "quantum computing algorithms" --provider deepseek
 
@@ -70,98 +85,180 @@ deep-researcher "quantum computing algorithms" --provider deepseek
 export OPENAI_API_KEY="sk-ant-..."
 deep-researcher "climate modeling" --provider anthropic
 
-# OpenRouter (access 100+ models)
+# OpenRouter (100+ models, 29 free)
 export OPENAI_API_KEY="sk-or-..."
 deep-researcher "protein folding" --provider openrouter
 
-# LMStudio (local)
+# LMStudio (local GUI)
 deep-researcher "robotics control" --provider lmstudio
-
-# Together AI
-export OPENAI_API_KEY="..."
-deep-researcher "NLP transformers" --provider together
 ```
 
-Supported providers: `ollama`, `lmstudio`, `openai`, `anthropic`, `groq`, `deepseek`, `openrouter`, `together`
+<details>
+<summary><strong>All 8 supported providers</strong></summary>
+
+| Provider | Flag | Default Model | API Key Required |
+|---|---|---|---|
+| Ollama | `--provider ollama` | `qwen3.5:9b` | No (local) |
+| LMStudio | `--provider lmstudio` | auto-detect | No (local) |
+| OpenAI | `--provider openai` | `gpt-5.4-mini` | Yes |
+| Anthropic | `--provider anthropic` | `claude-sonnet-4-6` | Yes |
+| Groq | `--provider groq` | `qwen/qwen3-32b` | Yes (free tier) |
+| DeepSeek | `--provider deepseek` | `deepseek-chat` | Yes |
+| OpenRouter | `--provider openrouter` | `claude-sonnet-4-6` | Yes (free models) |
+| Together | `--provider together` | `Llama-4-Maverick` | Yes |
+
+</details>
 
 ---
 
 ## What You Get
 
-Each session produces four files in `./output/<timestamp>-<topic>/`:
+Each session produces four files:
 
 ```
 output/2026-03-31-142315-transformer-structural-health/
-  report.md        # Structured literature review with thematic analysis
-  references.bib   # Deduplicated BibTeX — import directly into LaTeX
-  papers.json      # Full metadata for all papers found
-  metadata.json    # Research stats: databases, coverage, year range
+├── report.md        # Categorized literature review with synthesis
+├── references.bib   # Deduplicated BibTeX — import into LaTeX/Overleaf
+├── papers.json      # Full metadata for every paper found
+└── metadata.json    # Research stats: databases, coverage, year range
 ```
+
+---
+
+## Sample Output
+
+Here's what the synthesis looks like — **not a history lesson, but structured analysis:**
+
+```markdown
+### Transformer Models for Structural Health Monitoring
+
+#### Coverage
+32 papers found across 5 databases (2019-2026). 8 open access.
+
+#### Categories
+
+##### 1. Vision-Based Damage Detection (12 papers)
+**What this group does:** Uses CNNs and vision transformers on structural images
+to detect cracks, corrosion, and deformation.
+**Key methods:** ResNet-50 transfer learning, ViT fine-tuning, YOLO object detection
+**Main findings:** 90-97% accuracy on controlled datasets, drops to 70-82% in field
+conditions. The lab-to-field gap is the central unsolved problem.
+**Limitations:** Requires high-resolution images; lighting/weather sensitivity.
+
+| Ref | Paper | Year | Method | Key Finding | Citations |
+|-----|-------|------|--------|-------------|-----------|
+| [1] | Li et al. | 2022 | ResNet-50 | 94% crack detection | 145 |
+| [5] | Wang et al. | 2023 | ViT-Base | 97% lab / 72% field | 89 |
+| [12] | Park et al. | 2024 | YOLOv8 | Real-time bridge inspection | 34 |
+| ... | ... | ... | ... | ... | ... |
+
+##### 2. Vibration-Based Monitoring (9 papers)
+...
+
+#### Cross-Category Patterns
+Categories 1 and 2 are converging: 3 papers in 2024-2025 combine vision
++ vibration data. Physics-informed approaches appear in both but aren't
+dominant yet. Transfer learning is the most common strategy across all groups.
+
+#### Gaps & Opportunities
+1. No multi-modal fusion combining vision + vibration + thermal in one model
+2. No studies on long-term model drift (models trained on new structures,
+   tested years later on degraded ones)
+3. ...
+```
+
+> Every paper found appears in a category table. Every paper is in the references. No paper is invented.
 
 ---
 
 ## How It Works
 
 ```
-                        YOUR RESEARCH QUESTION
-                                |
-                                v
-                 +------------------------------+
-                 |     Phase 1: DISCOVERY        |
-                 |  Break query into subqueries  |
-                 |  Search 3-6 databases         |
-                 |  Run searches concurrently    |
-                 |  Collect 20-40 candidates     |
-                 +------------------------------+
-                                |
-                                v
-                 +------------------------------+
-                 |     Phase 2: DEEP DIVE        |
-                 |  Follow citation chains       |
-                 |  Get details on key papers    |
-                 |  Check open access (Unpaywall)|
-                 |  Find survey/review papers    |
-                 +------------------------------+
-                                |
-                                v
-                 +------------------------------+
-                 |     Phase 3: SYNTHESIS        |
-                 |  Thematic analysis            |
-                 |  Chronological development    |
-                 |  Research gaps identified     |
-                 |  Numbered inline citations    |
-                 +------------------------------+
-                                |
-                                v
-              report.md + references.bib + papers.json
+┌─────────────────────────────────────────────────────────┐
+│                  YOUR RESEARCH QUESTION                  │
+└────────────────────────┬────────────────────────────────┘
+                         │
+          ┌──────────────▼──────────────┐
+          │   Phase 1-2: SEARCH AGENT   │
+          │                             │
+          │  ┌─── arXiv ──────────┐     │
+          │  ├─── Semantic Scholar┤     │    The LLM decides
+          │  ├─── OpenAlex ───────┤ ──► │    what to search,
+          │  ├─── CrossRef ───────┤     │    follows citations,
+          │  ├─── PubMed ─────────┤     │    and stops when it
+          │  └─── CORE ───────────┘     │    has enough papers
+          │                             │
+          │  + Citation chain following │
+          │  + Open access detection    │
+          │  + Concurrent execution     │
+          └──────────────┬──────────────┘
+                         │
+              Structured paper corpus
+              (deduplicated, merged)
+                         │
+          ┌──────────────▼──────────────┐
+          │  Phase 3: SYNTHESIS AGENT   │
+          │                             │
+          │  Receives ALL papers as     │
+          │  structured data, then:     │
+          │                             │
+          │  1. Categorizes by theme    │
+          │  2. Synthesizes per group   │
+          │  3. Finds cross-group       │
+          │     patterns                │
+          │  4. Identifies gaps         │
+          └──────────────┬──────────────┘
+                         │
+          ┌──────────────▼──────────────┐
+          │  report.md + references.bib │
+          │  papers.json + metadata.json│
+          └─────────────────────────────┘
 ```
 
-The LLM drives the entire process. It decides which databases to search, what queries to use, when to follow citations, and when it has enough to synthesize. You control the intensity with two knobs:
+### Research Intensity: `--breadth` and `--depth`
 
-```bash
-# Quick scan — fast, surface-level
-deep-researcher "topic" --breadth 1 --depth 0
+These two flags control how thorough the research is. Think of it like adjusting a microscope:
 
-# Standard research (default)
-deep-researcher "topic"
-
-# Comprehensive — wide search, deep citation chains
-deep-researcher "topic" --breadth 5 --depth 4
+```
+--breadth = how WIDE you search (number of different search angles)
+--depth   = how DEEP you dig  (how many citation chains to follow)
 ```
 
-### Academic Databases
+| Setting | What happens | Papers found | Time |
+|---|---|---|---|
+| `--breadth 1 --depth 0` | One search query, no citation following | ~5-10 | ~1 min |
+| `--breadth 3 --depth 2` | **(default)** 3 query angles, follows citations for top papers | ~15-30 | ~3-5 min |
+| `--breadth 5 --depth 4` | 5 query angles with synonyms, deep citation chains | ~30-60 | ~8-15 min |
 
-| Tool | Source | What It Covers |
-|---|---|---|
-| `search_arxiv` | arXiv | Preprints: CS, physics, math, engineering, biology |
-| `search_semantic_scholar` | Semantic Scholar | 200M+ papers, all fields, citation graphs |
-| `search_openalex` | OpenAlex | 250M+ works, fully open metadata |
-| `search_crossref` | CrossRef | 150M+ records from Elsevier, Springer, IEEE, Wiley |
-| `search_pubmed` | PubMed | 36M+ biomedical and life sciences |
-| `search_core` | CORE | 300M+ open access full texts |
-| `get_paper_details` | Semantic Scholar | Deep lookup on a specific paper by DOI |
-| `get_citations` | Semantic Scholar | Papers that cite this / papers this cites |
-| `find_open_access` | Unpaywall | Legal free copies of paywalled papers |
+**Breadth example:** For "machine learning in structural engineering", breadth=3 means the agent searches:
+1. "machine learning structural engineering"
+2. "deep learning civil infrastructure"
+3. "AI-based structural health monitoring"
+
+**Depth example:** depth=2 means for the most-cited papers found, the agent:
+1. Checks who cites them (find newer follow-up work)
+2. Checks what they cite (find foundational papers)
+
+> [!TIP]
+> Start with defaults. If the report feels thin, increase breadth. If it's missing foundational papers, increase depth.
+
+---
+
+## Academic Databases
+
+| Tool | Source | Papers | What It Covers |
+|---|---|---|---|
+| `search_arxiv` | arXiv | 2.4M+ | Preprints: CS, physics, math, engineering, biology |
+| `search_semantic_scholar` | Semantic Scholar | 200M+ | All fields, citation graphs, TLDR summaries |
+| `search_openalex` | OpenAlex | 250M+ | Fully open metadata, excellent coverage |
+| `search_crossref` | CrossRef | 150M+ | Elsevier, Springer, IEEE, Wiley, ACM |
+| `search_pubmed` | PubMed | 36M+ | Biomedical and life sciences |
+| `search_core` | CORE | 300M+ | Open access full texts worldwide |
+| `get_paper_details` | Semantic Scholar | — | Deep lookup by DOI with TLDR |
+| `get_citations` | Semantic Scholar | — | "Who cites this" / "What this cites" |
+| `find_open_access` | Unpaywall | — | Find free legal copies of paywalled papers |
+
+> All APIs are **free**. No Tavily, no SearXNG, no paid search APIs required.
 
 ---
 
@@ -171,10 +268,11 @@ deep-researcher "topic" --breadth 5 --depth 4
 deep-researcher "your research question" [options]
 
 Options:
-  --model MODEL          LLM model name (default: llama3.1)
+  --provider PROVIDER    LLM provider (ollama, openai, groq, etc.)
+  --model MODEL          LLM model name
   --base-url URL         OpenAI-compatible API URL
   --api-key KEY          API key
-  --breadth N            Search breadth: query variations (1-5, default: 3)
+  --breadth N            Search breadth: query angles (1-5, default: 3)
   --depth N              Search depth: citation rounds (0-5, default: 2)
   --max-iterations N     Max agentic loop iterations (default: 20)
   --output DIR           Output directory (default: ./output)
@@ -192,32 +290,39 @@ Create `~/.deep-researcher/config.json`:
 
 ```json
 {
-  "model": "gpt-4o",
-  "base_url": "https://api.openai.com/v1",
-  "api_key": "sk-...",
+  "model": "qwen3.5:9b",
+  "base_url": "http://localhost:11434/v1",
+  "api_key": "ollama",
   "email": "you@university.edu",
   "output_dir": "~/research/output"
 }
 ```
 
-### Environment Variables
+Priority: CLI args > environment variables > config file > defaults.
+
+<details>
+<summary><strong>Environment variables</strong></summary>
 
 | Variable | Default | Description |
 |---|---|---|
-| `DEEP_RESEARCH_MODEL` | `llama3.1` | LLM model name |
+| `DEEP_RESEARCH_MODEL` | `qwen3.5:9b` | LLM model name |
 | `OPENAI_BASE_URL` | `http://localhost:11434/v1` | API endpoint |
 | `OPENAI_API_KEY` | `ollama` | API key |
 | `DEEP_RESEARCH_MAX_ITER` | `20` | Max iterations |
 | `DEEP_RESEARCH_EMAIL` | — | Email for polite API pool |
 | `CORE_API_KEY` | — | Free key from [CORE](https://core.ac.uk/api-keys/register) |
 
-Priority: CLI args > environment variables > config file > defaults.
+</details>
 
-### Models & Compatibility
+---
 
-Deep Researcher requires models with **function/tool calling** support. This is how the agent decides which databases to search.
+## Models & Compatibility
 
-**Local models (Ollama / LMStudio):**
+> [!IMPORTANT]
+> Deep Researcher requires models with **function/tool calling** support. If your model doesn't support this, you'll get a clear error message with recommendations.
+
+<details>
+<summary><strong>Local models (Ollama / LMStudio)</strong></summary>
 
 | Model | Ollama ID | Tool Calling | Notes |
 |---|---|---|---|
@@ -231,22 +336,24 @@ Deep Researcher requires models with **function/tool calling** support. This is 
 | GLM-4.7-Flash | `glm-4.7-flash` | Yes | Fast, balanced |
 | DeepSeek R1 | `deepseek-r1` | **No** | Does NOT support tool calling |
 
-**Cloud providers:**
+</details>
 
-| Provider | Recommended Model | Model ID | Notes |
+<details>
+<summary><strong>Cloud models</strong></summary>
+
+| Provider | Model | Model ID | Notes |
 |---|---|---|---|
-| OpenAI | GPT-5.4 | `gpt-5.4` | Best overall quality, 1M context |
+| OpenAI | GPT-5.4 | `gpt-5.4` | Best overall, 1M context |
 | OpenAI | GPT-5.4 Mini | `gpt-5.4-mini` | Great speed/cost balance |
 | OpenAI | GPT-OSS 120B | `gpt-oss-120b` | Open-weight, Apache 2.0 |
-| Anthropic | Claude Opus 4.6 | `claude-opus-4-6` | Top-tier synthesis, 1M context |
-| Anthropic | Claude Sonnet 4.6 | `claude-sonnet-4-6` | Fast, excellent quality |
-| Groq | Qwen3 32B | `qwen/qwen3-32b` | Ultra-fast inference via LPU |
-| Groq | GPT-OSS 120B | `gpt-oss-120b` | Highest intelligence on Groq |
-| DeepSeek | V3.2 | `deepseek-chat` | Affordable, strong reasoning |
-| Together | Llama 4 Maverick | `meta-llama/Llama-4-Maverick-17B-128E-Instruct` | Fast inference |
-| OpenRouter | Any model | Browse 40+ models | 29 free models available |
+| Anthropic | Claude Opus 4.6 | `claude-opus-4-6` | Top synthesis, 1M context |
+| Anthropic | Claude Sonnet 4.6 | `claude-sonnet-4-6` | Fast, excellent |
+| Groq | Qwen3 32B | `qwen/qwen3-32b` | Ultra-fast LPU inference |
+| DeepSeek | V3.2 | `deepseek-chat` | Affordable, strong |
+| Together | Llama 4 Maverick | `meta-llama/Llama-4-Maverick-17B-128E-Instruct` | Fast |
+| OpenRouter | Any | Browse 40+ models | 29 free models |
 
-> **If you get a "function calling not supported" error**, your model doesn't support tool use. Switch to one of the models listed above.
+</details>
 
 ---
 
@@ -259,9 +366,11 @@ Deep Researcher requires models with **function/tool calling** support. This is 
 | Open access check | No | No | No | **Yes** |
 | Paper deduplication | No | No | No | **Yes** |
 | BibTeX output | No | No | No | **Yes** |
+| Categorized synthesis | No | No | No | **Yes** |
 | Dependencies | ~50+ | ~30+ | ~50+ | **3** |
 | Lines of code | ~15K | ~10K | ~15K | **~1.5K** |
-| Runs locally | Partial | Partial | Yes | **Yes** |
+| Runs fully local | Partial | Partial | Yes | **Yes** |
+| Paid APIs required | Yes (Tavily) | Yes | Yes (SearXNG) | **No** |
 
 ---
 
@@ -300,25 +409,29 @@ This project started as a study of **Claude Code's source code** — Anthropic's
 
 While analyzing the architecture, several patterns stood out as broadly applicable beyond coding assistants:
 
-1. **The agentic tool-call loop** (`queryLoop()` in `query.ts`) — a while loop where the LLM calls tools, gets results, and decides what to do next. Simple but powerful.
-2. **Concurrent tool execution** (`partitionToolCalls()` in `toolOrchestration.ts`) — read-only tools run in parallel, write tools run serially. Cuts latency dramatically.
-3. **Structured tool results** (`ToolResult<T>` in `Tool.ts`) — tools return typed data alongside human-readable text, enabling proper tracking without parsing.
-4. **Retry with exponential backoff** — every external call handles rate limits and transient failures gracefully.
+1. **The agentic tool-call loop** (`queryLoop()` in `query.ts`) — a while loop where the LLM calls tools, gets results, and decides what to do next
+2. **Partitioned concurrent execution** (`partitionToolCalls()` in `toolOrchestration.ts`) — read-only tools run in parallel, write tools run serially
+3. **Structured tool results** (`ToolResult<T>` in `Tool.ts`) — tools return typed data alongside human-readable text
+4. **Token-aware context compression** (`autoCompact` in `compact.ts`) — keeps conversations within context limits
+5. **Multi-level retry/recovery** — exponential backoff, reactive compaction, graceful degradation
 
 The question was: **what if you applied these production-tested patterns to academic research instead of code editing?**
 
-The result is Deep Researcher — a clean-room Python implementation (~1,500 lines, 3 dependencies) that uses the same architectural DNA as Claude Code but pointed at academic databases instead of file systems. No code was copied; just the design patterns that make agentic systems reliable in production.
+The result is Deep Researcher — a clean-room Python implementation that uses the same architectural DNA as Claude Code but pointed at academic databases. No code was copied; just the design patterns that make agentic systems reliable in production.
 
-### Architecture Mapping
+<details>
+<summary><strong>Architecture mapping: Claude Code → Deep Researcher</strong></summary>
 
 | Claude Code (TypeScript) | Deep Researcher (Python) |
 |---|---|
-| `queryLoop()` in `query.ts` | `research()` in `agent.py` |
+| `queryLoop()` in `query.ts` | `_search_phase()` in `agent.py` |
 | `buildTool()` with schema + execute | `Tool` class + `execute()` → `ToolResult` |
-| `partitionToolCalls()` batching | `execute_concurrent()` via ThreadPoolExecutor |
+| `partitionToolCalls()` batching | `execute_partitioned()` via ThreadPoolExecutor |
 | `ToolResult<T>` with data + messages | `ToolResult` with text + papers |
-| `ToolRegistry` with deny rules | `ToolRegistry` with schema export |
-| Exponential backoff on API errors | Same, across all 9 tools |
+| `autoCompact` token-aware compression | `_compact_messages` with token estimation |
+| Exponential backoff + reactive recovery | Same, at both tool and LLM level |
+
+</details>
 
 ### Built With
 
@@ -330,14 +443,14 @@ The entire project — from initial architecture study through implementation to
 
 ```
 src/deep_researcher/
-  __main__.py          # CLI entry point
-  agent.py             # Agentic research loop (core)
-  llm.py               # OpenAI-compatible LLM client
-  config.py            # Config file + env var loading
-  models.py            # Paper, ToolResult data models
-  report.py            # Report + BibTeX + JSON generation
+  __main__.py          # CLI entry point + provider presets
+  agent.py             # Two-phase research: search agent → synthesis agent
+  llm.py               # OpenAI-compatible client with retry/recovery
+  config.py            # Config file + env var + CLI loading
+  models.py            # Paper (with dedup + merge) + ToolResult
+  report.py            # Report + BibTeX + JSON + metadata generation
   tools/
-    base.py            # Tool base class + concurrent registry
+    base.py            # Tool base class + partitioned concurrent registry
     arxiv_search.py    # arXiv API
     semantic_scholar.py # Semantic Scholar + citation chains
     openalex.py        # OpenAlex API
