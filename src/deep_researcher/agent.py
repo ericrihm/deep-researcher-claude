@@ -11,85 +11,33 @@ from deep_researcher.report import save_report
 from deep_researcher.tools import build_tool_registry
 
 
-def _build_system_prompt(config: Config) -> str:
+# --- Search phase prompt: focus on GATHERING papers, not writing ---
+
+def _build_search_prompt(config: Config) -> str:
     return f"""\
-You are a research analyst that maps academic landscapes. Given a research question, \
-you systematically search databases, track how papers connect, and produce insight-driven \
-analysis — not textbook summaries.
+You are a research paper collector. Your ONLY job right now is to find as many relevant \
+papers as possible on the given topic. Do NOT write a report. Just search.
 
-## How to Research — Three Phases
+## Strategy
+1. Break the topic into {config.breadth} different search angles using varied terminology
+2. Search at least 3 different databases per angle
+3. When you find highly-cited papers (>50 citations), follow their citation chains
+4. Use get_paper_details on papers that appear in multiple databases
+5. Look for survey/review papers — they reference dozens of other relevant papers
 
-### Phase 1: DISCOVERY (first ~{config.breadth * 2} tool calls)
-- Break the question into {config.breadth} search queries using different terminology
-- Search at least 3 databases per query variant
-- Aim for 20-40 candidate papers
+## When to Stop
+Stop searching (respond with just "DONE") when:
+- You have found 20+ relevant papers
+- New searches mostly return papers you already found
+- You have searched 3+ databases
+- You have followed citation chains for the top-cited papers
 
-### Phase 2: DEEP DIVE (next ~{config.depth * 3} tool calls)
-- Follow citation chains on the top {config.depth * 3} most-cited papers
-- Get details on papers that appear across multiple searches
-- Look for survey/review papers — they map the field for you
-- Check open access for key papers
-
-### Phase 3: SYNTHESIS (final response — no more tool calls)
-- Write the analysis (see format below)
-- Stop searching. Write.
-
-## When to Stop Searching
-- You have 15-30 relevant papers
-- New searches return papers you already found
-- You covered 3+ databases and followed citation chains
-
-## Final Report Format
-
-Be direct. No filler. No "In recent years..." introductions. Write like a researcher \
-briefing a colleague, not like a textbook.
-
-### [Topic]
-
-#### What's Been Done
-2-3 paragraphs mapping the landscape. What approaches exist? What are the main \
-camps or schools of thought? Where is consensus, where is debate?
-
-#### Key Methods & Findings
-
-| Paper | Approach | Key Result | Limitation |
-|-------|----------|------------|------------|
-| Author (Year) [N] | Method used | What they found | What's missing |
-
-(Include 10-15 most important papers in this table)
-
-#### How Papers Connect
-Which papers build on each other? What are the intellectual lineages? \
-Who disagrees with whom? What triggered shifts in the field? \
-Think Connected Papers — show the web of relationships.
-
-#### Gaps & Opportunities
-What hasn't been tried? What's the low-hanging fruit? Where would a new \
-paper have the most impact? Be specific — name concrete research questions.
-
-#### Open Access
-List papers that have free full-text versions available.
-
-#### References
-[N] Authors (Year). Title. *Journal*. DOI: xxx
-
-## Writing Rules
-
-DO:
-- Be direct and specific
-- Show connections between papers
-- Highlight contradictions and debates
-- Name concrete methods (not "various machine learning techniques")
-- Use the findings table for structured comparison
-- Identify what's actually missing, not what "could be explored further"
-
-DO NOT:
-- Write long introductions explaining what the field is
-- Give chronological history lessons ("In 2015, Smith et al...")
-- Summarize each paper one-by-one in paragraphs
-- Use hedge phrases ("It is worth noting...", "Further research is needed...")
-- Pad with generic statements about the importance of the topic
-- Hallucinate papers — ONLY cite papers you found via tools
+## Rules
+- Search aggressively — cast a wide net
+- Use different terminology across databases (different fields use different terms)
+- Prioritize recent work AND foundational papers
+- Do NOT write any analysis or report yet — just search
+- When you are done searching, respond with exactly: DONE
 
 ## Available Databases
 - **arXiv**: Preprints — CS, physics, math, engineering, biology
@@ -98,6 +46,68 @@ DO NOT:
 - **CrossRef**: 150M+ records from Elsevier, Springer, IEEE, Wiley
 - **PubMed**: 36M+ biomedical and life sciences
 - **CORE**: 300M+ open access articles
+"""
+
+
+# --- Synthesis prompt: categorize and synthesize from structured corpus ---
+
+_SYNTHESIS_PROMPT = """\
+You are a research analyst. Below is a corpus of {count} papers found across {db_count} \
+academic databases on the topic: "{query}"
+
+Your job: **categorize these papers and synthesize findings across categories.** \
+Not a story. Not a history lesson. A structured analysis.
+
+## The Paper Corpus
+
+{corpus}
+
+## Output Format
+
+### {query}
+
+#### Coverage
+One line: how many papers, which databases, what year range.
+
+#### Categories
+
+For each category you identify (typically 3-6 categories):
+
+##### Category Name (N papers)
+**What this group does:** 1-2 sentences describing the shared approach/theme.
+**Key methods:** List the specific methods/techniques used across papers in this group.
+**Main findings:** What do papers in this group collectively show? Where do they agree? Disagree?
+**Limitations:** What are the common weaknesses across this group?
+
+| Ref | Paper | Year | Method | Key Finding | Citations |
+|-----|-------|------|--------|-------------|-----------|
+| [N] | Author et al. | Year | Approach | Result | Count |
+
+(List ALL papers in this category in the table, not just the top ones)
+
+#### Cross-Category Patterns
+What patterns emerge across categories? Which categories are converging? \
+What contradictions exist between groups? Which papers bridge multiple categories?
+
+#### Gaps & Opportunities
+Be specific. Name concrete research questions that nobody has addressed. \
+Point to specific combinations of methods/domains that haven't been tried.
+
+#### Open Access Papers
+List papers with free full-text versions available (if any were found).
+
+#### References
+[N] Authors (Year). Title. *Journal*. DOI: xxx
+
+(Number every paper. Include ALL papers from the corpus, not just the ones you discuss.)
+
+## Rules
+- EVERY paper in the corpus must appear in at least one category table AND in References
+- Categorize by approach/theme, NOT by database source
+- Synthesize ACROSS papers — don't summarize each paper individually
+- Be direct. No filler. No "In recent years..." No hedging.
+- If papers contradict each other, say so explicitly
+- Do NOT invent papers that aren't in the corpus above
 """
 
 
@@ -111,8 +121,6 @@ def _compact_messages(messages: list[dict]) -> list[dict]:
     if len(tool_msgs) <= _COMPACT_THRESHOLD:
         return messages
 
-    # Keep the system prompt, first user message, and recent messages
-    # Truncate old tool results to just their first 200 chars
     cutoff = len(tool_msgs) - _COMPACT_THRESHOLD // 2
     old_indices = {i for i, _ in tool_msgs[:cutoff]}
 
@@ -121,7 +129,6 @@ def _compact_messages(messages: list[dict]) -> list[dict]:
         if i in old_indices:
             content = msg["content"]
             if len(content) > 200:
-                # Keep first line (summary) + truncation notice
                 first_line = content.split("\n")[0]
                 compacted.append({**msg, "content": f"{first_line}\n[Earlier results truncated to save context]"})
             else:
@@ -129,6 +136,55 @@ def _compact_messages(messages: list[dict]) -> list[dict]:
         else:
             compacted.append(msg)
     return compacted
+
+
+def _build_paper_corpus(papers: dict[str, Paper]) -> str:
+    """Build a structured paper corpus for the synthesis prompt."""
+    if not papers:
+        return "(No papers found)"
+
+    # Sort by citation count (highest first), then by year (newest first)
+    sorted_papers = sorted(
+        papers.values(),
+        key=lambda p: (-(p.citation_count or 0), -(p.year or 0)),
+    )
+
+    lines = []
+    for i, p in enumerate(sorted_papers, 1):
+        entry = f"[{i}] {p.title}"
+        parts = []
+        if p.authors:
+            author_str = p.authors[0]
+            if len(p.authors) > 1:
+                author_str += " et al."
+            parts.append(author_str)
+        if p.year:
+            parts.append(str(p.year))
+        if p.journal:
+            parts.append(p.journal)
+        if p.citation_count is not None:
+            parts.append(f"{p.citation_count} citations")
+        if p.doi:
+            parts.append(f"DOI: {p.doi}")
+        if p.open_access_url:
+            parts.append(f"OA: {p.open_access_url}")
+
+        entry += f"\n   {' | '.join(parts)}"
+
+        if p.abstract:
+            abstract = p.abstract[:250]
+            if len(p.abstract) > 250:
+                cut = abstract.rfind(". ")
+                abstract = abstract[:cut + 1] if cut > 150 else abstract + "..."
+            entry += f"\n   Abstract: {abstract}"
+
+        # Track which databases found this paper
+        if p.source:
+            entry += f"\n   Found in: {p.source}"
+
+        lines.append(entry)
+
+    return "\n\n".join(lines)
 
 
 class ResearchAgent:
@@ -148,17 +204,30 @@ class ResearchAgent:
             border_style="blue",
         ))
 
-        system_prompt = _build_system_prompt(self.config)
+        # === PHASE 1 & 2: Search (gather papers) ===
+        self.console.print("\n[bold blue]Phase 1-2: Searching databases...[/bold blue]")
+        self._search_phase(query)
+
+        # === PHASE 3: Synthesize (categorize + analyze) ===
+        self.console.print(f"\n[bold blue]Phase 3: Synthesizing {len(self.papers)} papers...[/bold blue]")
+        report = self._synthesis_phase(query)
+
+        self._print_summary()
+        self._save(query, report)
+        return report
+
+    def _search_phase(self, query: str) -> None:
+        """Run the agentic search loop to collect papers."""
+        search_prompt = _build_search_prompt(self.config)
         messages: list[dict] = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Research this question and produce an insight-driven literature analysis:\n\n{query}"},
+            {"role": "system", "content": search_prompt},
+            {"role": "user", "content": f"Find all relevant papers on:\n\n{query}"},
         ]
         tool_schemas = self.registry.schemas()
 
         for iteration in range(1, self.config.max_iterations + 1):
-            self.console.print(f"\n[dim]--- Iteration {iteration}/{self.config.max_iterations} | {len(self.papers)} papers | {len(self._databases_used)} databases ---[/dim]")
+            self.console.print(f"\n[dim]--- Search {iteration}/{self.config.max_iterations} | {len(self.papers)} papers | {len(self._databases_used)} databases ---[/dim]")
 
-            # Context compression — truncate old tool results (Claude Code autoCompact pattern)
             messages = _compact_messages(messages)
 
             try:
@@ -167,16 +236,16 @@ class ResearchAgent:
                 self.console.print(f"[red]LLM error: {e}[/red]")
                 break
 
-            # No tool calls = LLM is done, final report
+            # No tool calls = LLM says it's done searching
             if not response.tool_calls:
-                report = response.content or ""
-                self._print_summary()
-                self._save(query, report)
-                return report
+                content = (response.content or "").strip()
+                if content:
+                    self.console.print(f"  [dim]{_truncate(content, 100)}[/dim]")
+                break
 
             messages.append(_message_to_dict(response))
 
-            # Execute tool calls concurrently (Claude Code pattern)
+            # Execute tool calls concurrently
             tc_list = [
                 {"id": tc.id, "name": tc.function.name, "arguments": tc.function.arguments}
                 for tc in response.tool_calls
@@ -207,25 +276,31 @@ class ResearchAgent:
 
             self.console.print(f"  [yellow]Total: {len(self.papers)} unique papers from {len(self._databases_used)} databases[/yellow]")
 
-        # Max iterations — force synthesis
-        self.console.print("\n[yellow]Max iterations reached — synthesizing...[/yellow]")
-        messages = _compact_messages(messages)
-        messages.append({
-            "role": "user",
-            "content": (
-                f"You have found {len(self.papers)} papers across {len(self._databases_used)} databases. "
-                "Stop searching. Write your analysis now using the format specified."
-            ),
-        })
+    def _synthesis_phase(self, query: str) -> str:
+        """Synthesize all collected papers into a categorized analysis."""
+        if not self.papers:
+            return "No papers were found for this query."
+
+        # Build structured corpus from ALL tracked papers
+        corpus = _build_paper_corpus(self.papers)
+
+        synthesis_prompt = _SYNTHESIS_PROMPT.format(
+            count=len(self.papers),
+            db_count=len(self._databases_used),
+            query=query,
+            corpus=corpus,
+        )
+
+        messages: list[dict] = [
+            {"role": "system", "content": synthesis_prompt},
+            {"role": "user", "content": "Categorize and synthesize these papers now."},
+        ]
+
         try:
             response = self.llm.chat(messages)
-            report = response.content or ""
+            return response.content or ""
         except Exception as e:
-            report = f"Error generating final report: {e}"
-
-        self._print_summary()
-        self._save(query, report)
-        return report
+            return f"Error during synthesis: {e}"
 
     def _track_paper(self, paper: Paper) -> None:
         key = paper.unique_key
