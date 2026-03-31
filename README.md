@@ -47,7 +47,7 @@ pip install -e .
 ### Run with Ollama (local, free, private)
 
 ```bash
-ollama pull llama3.1
+ollama pull qwen3.5:9b
 deep-researcher "applications of transformer models in structural health monitoring"
 ```
 
@@ -219,28 +219,32 @@ Deep Researcher requires models with **function/tool calling** support. This is 
 
 **Local models (Ollama / LMStudio):**
 
-| Model | Tool Calling | Quality | Notes |
+| Model | Ollama ID | Tool Calling | Notes |
 |---|---|---|---|
-| `llama3.1` | Yes | Good | Default. Solid all-around |
-| `llama3.3:70b` | Yes | Excellent | Best local quality (needs 48GB+ VRAM) |
-| `qwen2.5:14b` | Yes | Excellent | Best quality/size ratio for local |
-| `qwen2.5-coder:32b` | Yes | Excellent | Strong structured output |
-| `gemma3:12b` | Yes | Good | Lightweight alternative |
-| `mistral-nemo` | Yes | Good | Fast |
-| `deepseek-r1` | **No** | - | Does NOT support tool calling |
-| `llama3.2:3b` | **No** | - | Too small for reliable tool use |
+| Qwen 3.5 9B | `qwen3.5:9b` | Yes | **Default.** Best quality/size ratio, 256K context |
+| Qwen 3.5 27B | `qwen3.5:27b` | Yes | Higher quality, needs 16GB+ VRAM |
+| Qwen3-Coder 30B | `qwen3-coder:30b` | Yes | Best agentic tool calling locally |
+| Qwen 3 32B | `qwen3:32b` | Yes | Strong general purpose |
+| Llama 4 Scout | `llama4:scout` | Yes | 10M context, multimodal |
+| Llama 4 Maverick | `llama4:maverick` | Yes | 128 experts, highest local quality |
+| DeepSeek V3.2 | `deepseek-v3.2` | Yes | Strong reasoning |
+| GLM-4.7-Flash | `glm-4.7-flash` | Yes | Fast, balanced |
+| DeepSeek R1 | `deepseek-r1` | **No** | Does NOT support tool calling |
 
 **Cloud providers:**
 
-| Provider | Recommended Model | Notes |
-|---|---|---|
-| OpenAI | `gpt-4o` | Best overall quality |
-| OpenAI | `gpt-4o-mini` | Good speed/cost balance |
-| Anthropic | `claude-sonnet-4-20250514` | Excellent synthesis |
-| Groq | `llama-3.3-70b-versatile` | Fast, free tier available |
-| DeepSeek | `deepseek-chat` | Good quality, affordable |
-| Together | `Llama-3.3-70B-Instruct-Turbo` | Fast inference |
-| OpenRouter | Any tool-calling model | Access 100+ models |
+| Provider | Recommended Model | Model ID | Notes |
+|---|---|---|---|
+| OpenAI | GPT-5.4 | `gpt-5.4` | Best overall quality, 1M context |
+| OpenAI | GPT-5.4 Mini | `gpt-5.4-mini` | Great speed/cost balance |
+| OpenAI | GPT-OSS 120B | `gpt-oss-120b` | Open-weight, Apache 2.0 |
+| Anthropic | Claude Opus 4.6 | `claude-opus-4-6` | Top-tier synthesis, 1M context |
+| Anthropic | Claude Sonnet 4.6 | `claude-sonnet-4-6` | Fast, excellent quality |
+| Groq | Qwen3 32B | `qwen/qwen3-32b` | Ultra-fast inference via LPU |
+| Groq | GPT-OSS 120B | `gpt-oss-120b` | Highest intelligence on Groq |
+| DeepSeek | V3.2 | `deepseek-chat` | Affordable, strong reasoning |
+| Together | Llama 4 Maverick | `meta-llama/Llama-4-Maverick-17B-128E-Instruct` | Fast inference |
+| OpenRouter | Any model | Browse 40+ models | 29 free models available |
 
 > **If you get a "function calling not supported" error**, your model doesn't support tool use. Switch to one of the models listed above.
 

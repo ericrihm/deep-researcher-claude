@@ -11,14 +11,14 @@ from deep_researcher.config import Config
 
 # Provider presets — saves users from looking up base URLs
 PROVIDERS: dict[str, dict[str, str]] = {
-    "ollama": {"base_url": "http://localhost:11434/v1", "api_key": "ollama", "default_model": "llama3.1"},
+    "ollama": {"base_url": "http://localhost:11434/v1", "api_key": "ollama", "default_model": "qwen3.5:9b"},
     "lmstudio": {"base_url": "http://localhost:1234/v1", "api_key": "lm-studio", "default_model": "default"},
-    "openai": {"base_url": "https://api.openai.com/v1", "api_key": "", "default_model": "gpt-4o"},
-    "anthropic": {"base_url": "https://api.anthropic.com/v1", "api_key": "", "default_model": "claude-sonnet-4-20250514"},
-    "groq": {"base_url": "https://api.groq.com/openai/v1", "api_key": "", "default_model": "llama-3.3-70b-versatile"},
+    "openai": {"base_url": "https://api.openai.com/v1", "api_key": "", "default_model": "gpt-5.4-mini"},
+    "anthropic": {"base_url": "https://api.anthropic.com/v1", "api_key": "", "default_model": "claude-sonnet-4-6"},
+    "groq": {"base_url": "https://api.groq.com/openai/v1", "api_key": "", "default_model": "qwen/qwen3-32b"},
     "deepseek": {"base_url": "https://api.deepseek.com/v1", "api_key": "", "default_model": "deepseek-chat"},
-    "openrouter": {"base_url": "https://openrouter.ai/api/v1", "api_key": "", "default_model": "anthropic/claude-sonnet-4"},
-    "together": {"base_url": "https://api.together.xyz/v1", "api_key": "", "default_model": "meta-llama/Llama-3.3-70B-Instruct-Turbo"},
+    "openrouter": {"base_url": "https://openrouter.ai/api/v1", "api_key": "", "default_model": "anthropic/claude-sonnet-4-6"},
+    "together": {"base_url": "https://api.together.xyz/v1", "api_key": "", "default_model": "meta-llama/Llama-4-Maverick-17B-128E-Instruct"},
 }
 
 
@@ -49,7 +49,7 @@ def main() -> None:
         console.print('  deep-researcher "transformer models in structural health monitoring"')
         console.print('  deep-researcher "machine learning drug discovery" --provider openai')
         console.print('  deep-researcher "CRISPR gene editing" --provider groq')
-        console.print('  deep-researcher "deep learning NLP" --provider ollama --model qwen2.5:14b')
+        console.print('  deep-researcher "deep learning NLP" --provider ollama --model qwen3.5:27b')
         console.print("")
         console.print("Providers: " + ", ".join(PROVIDERS.keys()))
         console.print("Config file: ~/.deep-researcher/config.json")
