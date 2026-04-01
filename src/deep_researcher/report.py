@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import json
 import os
 import re
@@ -14,10 +15,12 @@ def save_report(
     report_text: str,
     papers: dict[str, Paper],
     output_dir: str,
+    folder: str | None = None,
 ) -> dict[str, str]:
-    slug = _make_slug(query)
-    timestamp = datetime.now().strftime("%Y-%m-%d-%H%M%S")
-    folder = os.path.join(output_dir, f"{timestamp}-{slug}")
+    if not folder:
+        slug = _make_slug(query)
+        timestamp = datetime.now().strftime("%Y-%m-%d-%H%M%S")
+        folder = os.path.join(output_dir, f"{timestamp}-{slug}")
     os.makedirs(folder, exist_ok=True)
 
     # Metadata header for the report
@@ -73,6 +76,20 @@ def save_report(
     with open(papers_path, "w") as f:
         json.dump(papers_list, f, indent=2, ensure_ascii=False)
 
+    # CSV export (for Excel/spreadsheet users)
+    csv_path = os.path.join(folder, "papers.csv")
+    csv_fields = ["title", "authors", "year", "journal", "citation_count", "doi", "source", "open_access_url", "abstract"]
+    with open(csv_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=csv_fields, extrasaction="ignore")
+        writer.writeheader()
+        for p in papers.values():
+            if not p.title:
+                continue
+            row = p.to_dict()
+            # Join authors list for CSV
+            row["authors"] = "; ".join(row.get("authors", []))
+            writer.writerow(row)
+
     # Research metadata
     meta_path = os.path.join(folder, "metadata.json")
     with open(meta_path, "w") as f:
@@ -87,9 +104,27 @@ def save_report(
     return {
         "report": report_path,
         "bibtex": bibtex_path,
-        "papers": papers_path,
+        "papers (JSON)": papers_path,
+        "papers (CSV)": csv_path,
         "metadata": meta_path,
     }
+
+
+def save_checkpoint(papers: dict[str, Paper], folder: str) -> None:
+    """Save papers.json as a checkpoint during search (safe to call repeatedly)."""
+    os.makedirs(folder, exist_ok=True)
+    papers_path = os.path.join(folder, "papers.json")
+    papers_list = [p.to_dict() for p in papers.values() if p.title]
+    with open(papers_path, "w") as f:
+        json.dump(papers_list, f, indent=2, ensure_ascii=False)
+
+
+def get_output_folder(query: str, output_dir: str) -> str:
+    """Get a timestamped output folder path for a query (does not create it)."""
+    slug = _make_slug(query)
+    timestamp = datetime.now().strftime("%Y-%m-%d-%H%M%S")
+    folder = os.path.join(output_dir, f"{timestamp}-{slug}")
+    return folder
 
 
 def _make_slug(query: str) -> str:

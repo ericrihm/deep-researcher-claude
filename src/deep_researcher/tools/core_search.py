@@ -14,6 +14,7 @@ _RETRIABLE_STATUSES = {429, 500, 502, 503}
 
 class CoreSearchTool(Tool):
     name = "search_core"
+    category = "open_access"
     description = (
         "Search CORE for open access academic papers. Covers 300M+ open access articles "
         "and metadata from repositories worldwide. Good for finding free full-text versions "
@@ -63,7 +64,9 @@ class CoreSearchTool(Tool):
         if not results:
             return ToolResult(text="No papers found on CORE for this query.")
 
-        papers = [_parse_core_work(w) for w in results]
+        papers = self._filter_by_year([_parse_core_work(w) for w in results])
+        if not papers:
+            return ToolResult(text="No papers found on CORE for this query (after year filter).")
         lines = [f"Found {len(papers)} open access papers on CORE:\n"]
         for i, p in enumerate(papers, 1):
             lines.append(f"{i}. {p.to_summary()}\n")

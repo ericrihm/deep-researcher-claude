@@ -16,6 +16,7 @@ _RETRIABLE_STATUSES = {429, 500, 502, 503}
 
 class PaperDetailsTool(Tool):
     name = "get_paper_details"
+    category = "utility"
     description = (
         "Get detailed information about a specific paper by DOI, Semantic Scholar ID, "
         "or arXiv ID. Returns full metadata including abstract, citation count, and "

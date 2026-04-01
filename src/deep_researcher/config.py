@@ -37,6 +37,9 @@ class Config:
     breadth: int = 3
     depth: int = 2
     timeout: int = 60
+    start_year: int | None = None
+    end_year: int | None = None
+    interactive: bool = False
 
     def __post_init__(self) -> None:
         file_cfg = _load_config_file()
@@ -66,6 +69,16 @@ class Config:
         output = os.getenv("DEEP_RESEARCH_OUTPUT") or file_cfg.get("output_dir") or ""
         if output:
             self.output_dir = output
+
+        # Year range from env vars / config file
+        for attr, env_key in [("start_year", "DEEP_RESEARCH_START_YEAR"), ("end_year", "DEEP_RESEARCH_END_YEAR")]:
+            if getattr(self, attr) is None:
+                raw = os.getenv(env_key) or str(file_cfg.get(attr, ""))
+                if raw:
+                    try:
+                        setattr(self, attr, int(raw))
+                    except ValueError:
+                        pass
 
         self.breadth = max(1, min(self.breadth, 5))
         self.depth = max(0, min(self.depth, 5))

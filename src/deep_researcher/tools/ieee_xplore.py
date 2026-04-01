@@ -14,6 +14,7 @@ _RETRIABLE_STATUSES = {429, 500, 502, 503}
 
 class IEEEXploreSearchTool(Tool):
     name = "search_ieee"
+    category = "publisher"
     description = (
         "Search IEEE Xplore for engineering and computer science papers. Covers 6M+ "
         "articles from IEEE journals, conferences, and standards, plus IET publications. "
@@ -48,18 +49,25 @@ class IEEEXploreSearchTool(Tool):
 
         max_results = min(max_results, 25)
 
+        ieee_params: dict = {
+            "apikey": self._api_key,
+            "querytext": query,
+            "max_records": max_results,
+            "sort_field": "publication_year",
+            "sort_order": "desc",
+        }
+        # IEEE Xplore supports year range natively
+        if self._start_year is not None:
+            ieee_params["start_year"] = self._start_year
+        if self._end_year is not None:
+            ieee_params["end_year"] = self._end_year
+
         try:
             resp = None
             for attempt in range(3):
                 resp = httpx.get(
                     IEEE_BASE,
-                    params={
-                        "apikey": self._api_key,
-                        "querytext": query,
-                        "max_records": max_results,
-                        "sort_field": "publication_year",
-                        "sort_order": "desc",
-                    },
+                    params=ieee_params,
                     timeout=30,
                 )
                 if resp.status_code in _RETRIABLE_STATUSES:
@@ -77,7 +85,7 @@ class IEEEXploreSearchTool(Tool):
         if not articles:
             return ToolResult(text="No papers found on IEEE Xplore for this query.")
 
-        papers = [p for a in articles if (p := _parse_ieee_article(a)) is not None]
+        papers = self._filter_by_year([p for a in articles if (p := _parse_ieee_article(a)) is not None])
         if not papers:
             return ToolResult(text="No papers found on IEEE Xplore for this query.")
 

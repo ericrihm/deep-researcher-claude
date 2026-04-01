@@ -16,6 +16,7 @@ _NON_RETRIABLE_STATUSES = {400, 404}
 
 class SemanticScholarSearchTool(Tool):
     name = "search_semantic_scholar"
+    category = "index"
     description = (
         "Search Semantic Scholar for academic papers. Covers 200M+ papers across "
         "all academic fields. Returns citation counts and has excellent coverage of "
@@ -35,10 +36,16 @@ class SemanticScholarSearchTool(Tool):
 
     def execute(self, query: str, max_results: int = 10) -> ToolResult:
         max_results = min(max_results, 20)
+        params: dict = {"query": query, "limit": max_results, "fields": S2_FIELDS}
+        # Semantic Scholar supports year range filter
+        if self._start_year is not None or self._end_year is not None:
+            yr_start = self._start_year if self._start_year is not None else 1900
+            yr_end = self._end_year if self._end_year is not None else 2100
+            params["year"] = f"{yr_start}-{yr_end}"
         try:
             resp = _request_with_retry(
                 f"{S2_BASE}/paper/search",
-                params={"query": query, "limit": max_results, "fields": S2_FIELDS},
+                params=params,
             )
             resp.raise_for_status()
         except httpx.HTTPError as e:
@@ -49,7 +56,9 @@ class SemanticScholarSearchTool(Tool):
         if not papers_data:
             return ToolResult(text="No papers found on Semantic Scholar for this query.")
 
-        papers = [_parse_s2_paper(p) for p in papers_data]
+        papers = self._filter_by_year([_parse_s2_paper(p) for p in papers_data])
+        if not papers:
+            return ToolResult(text="No papers found on Semantic Scholar for this query (after year filter).")
         lines = [f"Found {len(papers)} papers on Semantic Scholar:\n"]
         for i, p in enumerate(papers, 1):
             lines.append(f"{i}. {p.to_summary()}\n")
@@ -58,6 +67,7 @@ class SemanticScholarSearchTool(Tool):
 
 class GetCitationsTool(Tool):
     name = "get_citations"
+    category = "citation"
     description = (
         "Get papers that cite a given paper, or papers that a given paper references. "
         "Use this to follow citation chains — find foundational work (references) "

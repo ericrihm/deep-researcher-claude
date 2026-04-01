@@ -16,15 +16,20 @@ from deep_researcher.tools.semantic_scholar import GetCitationsTool, SemanticSch
 
 def build_tool_registry(config: Config) -> ToolRegistry:
     registry = ToolRegistry()
-    registry.register(ArxivSearchTool())
-    registry.register(SemanticScholarSearchTool())
-    registry.register(OpenAlexSearchTool(email=config.email))
-    registry.register(CrossrefSearchTool(email=config.email))
-    registry.register(PubMedSearchTool())
-    registry.register(CoreSearchTool(api_key=config.core_api_key))
-    registry.register(ScopusSearchTool(api_key=config.scopus_api_key))
-    registry.register(IEEEXploreSearchTool(api_key=config.ieee_api_key))
-    registry.register(PaperDetailsTool())
-    registry.register(GetCitationsTool())
-    registry.register(OpenAccessTool(email=config.email))
+    tools = [
+        ArxivSearchTool(),
+        SemanticScholarSearchTool(),
+        OpenAlexSearchTool(email=config.email),
+        CrossrefSearchTool(email=config.email),
+        PubMedSearchTool(),
+        CoreSearchTool(api_key=config.core_api_key),
+        ScopusSearchTool(api_key=config.scopus_api_key),
+        IEEEXploreSearchTool(api_key=config.ieee_api_key),
+        PaperDetailsTool(),
+        GetCitationsTool(),
+        OpenAccessTool(email=config.email),
+    ]
+    for tool in tools:
+        tool.set_year_range(config.start_year, config.end_year)
+        registry.register(tool)
     return registry

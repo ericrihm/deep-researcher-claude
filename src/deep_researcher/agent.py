@@ -7,7 +7,7 @@ from rich.table import Table
 from deep_researcher.config import Config
 from deep_researcher.llm import LLMClient
 from deep_researcher.models import Paper
-from deep_researcher.report import save_report
+from deep_researcher.report import get_output_folder, save_checkpoint, save_report
 from deep_researcher.tools import build_tool_registry
 
 import logging
@@ -18,19 +18,30 @@ logger = logging.getLogger("deep_researcher")
 # --- Search phase prompt: focus on GATHERING papers, not writing ---
 
 def _build_search_prompt(config: Config) -> str:
+    year_note = ""
+    if config.start_year is not None or config.end_year is not None:
+        yr_start = config.start_year if config.start_year is not None else "any"
+        yr_end = config.end_year if config.end_year is not None else "present"
+        year_note = f"\n**Year filter active: {yr_start} to {yr_end}.** Results are automatically filtered, but you should still prioritize queries relevant to this period.\n"
+
     return f"""\
 You are a research paper collector. Your ONLY job right now is to find as many relevant \
 papers as possible on the given topic. Do NOT write a report. Just search.
-
+{year_note}
 ## Strategy
 1. Break the topic into {config.breadth} different search angles using varied terminology
-2. Search at least 3 different databases per angle
+2. Search at least 3 different databases per angle — use a mix of tool categories:
+   - **preprint** tools for cutting-edge work (arXiv)
+   - **index** tools for broad coverage (Semantic Scholar, PubMed)
+   - **open_access** tools for free full-text (OpenAlex, CORE)
+   - **publisher** tools for paywalled/established work (CrossRef, Scopus, IEEE)
+   - **citation** tools to follow reference chains
 3. When you find highly-cited papers (>50 citations), follow their citation chains
 4. Use get_paper_details on papers that appear in multiple databases
 5. Look for survey/review papers — they reference dozens of other relevant papers
 
 ## When to Stop
-Stop searching (respond with just "DONE") when:
+Stop searching (respond WITHOUT any tool calls) when:
 - You have found 20+ relevant papers
 - New searches mostly return papers you already found
 - You have searched 3+ databases
@@ -41,17 +52,17 @@ Stop searching (respond with just "DONE") when:
 - Use different terminology across databases (different fields use different terms)
 - Prioritize recent work AND foundational papers
 - Do NOT write any analysis or report yet — just search
-- When you are done searching, respond with exactly: DONE
+- When you are done searching, simply respond without calling any tools
 
 ## Available Databases
-- **arXiv**: Preprints in CS, physics, math, engineering, biology
-- **Semantic Scholar**: 200M+ papers, citation counts, TLDR summaries
-- **OpenAlex**: 250M+ works, fully open metadata
-- **CrossRef**: 150M+ records from Elsevier, Springer, IEEE, Wiley
-- **PubMed**: 36M+ biomedical and life sciences
-- **CORE**: 300M+ open access articles
-- **Scopus**: 90M+ records from most major publishers (abstracts of paywalled papers too)
-- **IEEE Xplore**: 6M+ IEEE/IET engineering and CS papers
+- **arXiv** [preprint]: Preprints in CS, physics, math, engineering, biology
+- **Semantic Scholar** [index]: 200M+ papers, citation counts, TLDR summaries
+- **OpenAlex** [open_access]: 250M+ works, fully open metadata
+- **CrossRef** [publisher]: 150M+ records from Elsevier, Springer, IEEE, Wiley
+- **PubMed** [index]: 36M+ biomedical and life sciences
+- **CORE** [open_access]: 300M+ open access articles
+- **Scopus** [publisher]: 90M+ records from most major publishers (abstracts of paywalled papers too)
+- **IEEE Xplore** [publisher]: 6M+ IEEE/IET engineering and CS papers
 """
 
 
@@ -201,6 +212,19 @@ def _build_paper_corpus(papers: dict[str, Paper]) -> str:
     return "\n\n".join(lines)
 
 
+_CLARIFY_PROMPT = """\
+You are a research assistant helping to refine a research question before searching academic databases.
+
+Given the user's research topic, generate exactly 3 short, focused clarifying questions that would \
+help narrow the search and produce better results. Focus on:
+- Specific subfield or application domain
+- Time period or recency preferences
+- Methodological focus (theoretical, empirical, computational, etc.)
+
+Format: Return ONLY the 3 questions, one per line, numbered 1-3. No preamble.
+"""
+
+
 class ResearchAgent:
     def __init__(self, config: Config) -> None:
         self.config = config
@@ -210,6 +234,47 @@ class ResearchAgent:
         self.console = Console()
         self._databases_used: set[str] = set()
         self._tool_call_count = 0
+        self._output_folder: str = ""
+
+    def clarify(self, query: str) -> str:
+        """Ask clarifying questions and return an enhanced query."""
+        self.console.print("\n[bold]Generating clarifying questions...[/bold]\n")
+        try:
+            response = self.llm.chat([
+                {"role": "system", "content": _CLARIFY_PROMPT},
+                {"role": "user", "content": query},
+            ])
+            questions = (response.content or "").strip()
+        except Exception as e:
+            self.console.print(f"[yellow]Could not generate questions: {e}. Proceeding with original query.[/yellow]")
+            return query
+
+        if not questions:
+            return query
+
+        self.console.print(questions)
+        self.console.print("\n[dim]Answer each question (press Enter to skip):[/dim]\n")
+
+        answers = []
+        for line in questions.split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                answer = input(f"  {line}\n  > ").strip()
+            except (EOFError, KeyboardInterrupt):
+                break
+            if answer:
+                answers.append(answer)
+
+        if not answers:
+            return query
+
+        # Combine original query + answers into enhanced query
+        enhanced = f"{query}\n\nAdditional context from the researcher:\n"
+        enhanced += "\n".join(f"- {a}" for a in answers)
+        self.console.print(f"\n[green]Enhanced query ready.[/green]")
+        return enhanced
 
     def research(self, query: str) -> str:
         self.console.print(Panel(
@@ -217,6 +282,9 @@ class ResearchAgent:
             title="Deep Researcher",
             border_style="blue",
         ))
+
+        # Create output folder early for checkpoints
+        self._output_folder = get_output_folder(query, self.config.output_dir)
 
         # === PHASE 1 & 2: Search (gather papers) ===
         self.console.print("\n[bold blue]Phase 1-2: Searching databases...[/bold blue]")
@@ -291,6 +359,7 @@ class ResearchAgent:
                     result = self.registry.execute(tc["name"], tc["arguments"])
                     results.append((tc["id"], result))
 
+            papers_before = len(self.papers)
             for call_id, result in results:
                 tc_info = next(tc for tc in tc_list if tc["id"] == call_id)
                 self._tool_call_count += 1
@@ -304,10 +373,46 @@ class ResearchAgent:
                     "tool_call_id": call_id,
                     "content": result.text,
                 })
+            new_papers = len(self.papers) - papers_before
 
-            self.console.print(f"  [yellow]Total: {len(self.papers)} unique papers from {len(self._databases_used)} databases[/yellow]")
+            new_label = f" (+{new_papers} new)" if new_papers else " (no new)"
+            self.console.print(f"  [yellow]Total: {len(self.papers)} unique papers{new_label} from {len(self._databases_used)} databases[/yellow]")
+
+            # Inject reflection prompt (adapts strategy: broad → focused → gap-filling)
+            progress = iteration / self.config.max_iterations
+            if progress < 0.35:
+                phase_hint = (
+                    "You're in the BROAD EXPLORATION phase. Cast a wide net — use different databases, "
+                    "vary your terminology, and try different search angles."
+                )
+            elif progress < 0.7:
+                phase_hint = (
+                    "You're in the FOCUSED DRILLING phase. Follow citation chains for your most-cited papers. "
+                    "Narrow your queries to specific methods, sub-topics, or time periods you haven't covered."
+                )
+            else:
+                phase_hint = (
+                    "You're in the GAP-FILLING phase. Look at what's missing — specific methods, recent work, "
+                    "foundational papers, or sub-topics with few results. Fill those specific gaps."
+                )
+
+            reflection = (
+                f"Status: {len(self.papers)} papers from {len(self._databases_used)} databases "
+                f"({', '.join(sorted(self._databases_used))}). "
+                f"{phase_hint} "
+                f"What topics, methods, or time periods are underrepresented? "
+                f"Search to fill those gaps, or stop if you have good coverage."
+            )
+            messages.append({"role": "user", "content": reflection})
+
+            # Checkpoint: save papers collected so far
+            if self.papers and self._output_folder:
+                try:
+                    save_checkpoint(self.papers, self._output_folder)
+                except Exception:
+                    pass  # Non-critical — don't break the search loop
         else:
-            # Loop completed without LLM saying DONE (hit max iterations)
+            # Loop completed without LLM stopping (hit max iterations)
             self.console.print(f"\n[yellow]Reached iteration limit ({self.config.max_iterations}). Proceeding to synthesis with {len(self.papers)} papers.[/yellow]")
 
     def _synthesis_phase(self, query: str) -> str:
@@ -315,14 +420,38 @@ class ResearchAgent:
         if not self.papers:
             return "No papers were found for this query."
 
-        # Build structured corpus from ALL tracked papers
-        corpus = _build_paper_corpus(self.papers)
+        # Cap synthesis corpus to prevent context overflow on smaller models
+        _MAX_SYNTHESIS_PAPERS = 200
+        all_papers = self.papers
+        if len(all_papers) > _MAX_SYNTHESIS_PAPERS:
+            # Take top papers by citation count, keeping all year ranges represented
+            sorted_all = sorted(
+                all_papers.values(),
+                key=lambda p: (-(p.citation_count or 0), -(p.year or 0)),
+            )
+            synthesis_papers = {p.unique_key: p for p in sorted_all[:_MAX_SYNTHESIS_PAPERS]}
+            self.console.print(
+                f"  [yellow]Corpus capped: synthesizing top {_MAX_SYNTHESIS_PAPERS} of {len(all_papers)} papers "
+                f"(all {len(all_papers)} saved to papers.json)[/yellow]"
+            )
+        else:
+            synthesis_papers = all_papers
+
+        corpus = _build_paper_corpus(synthesis_papers)
+
+        extra_note = ""
+        if len(all_papers) > len(synthesis_papers):
+            extra_note = (
+                f"\n\nNote: {len(all_papers)} total papers were found, but only the top "
+                f"{len(synthesis_papers)} by citation count are shown above. "
+                f"The full corpus is available in papers.json."
+            )
 
         synthesis_prompt = _SYNTHESIS_PROMPT.format(
-            count=len(self.papers),
+            count=len(synthesis_papers),
             db_count=len(self._databases_used),
             query=query,
-            corpus=corpus,
+            corpus=corpus + extra_note,
         )
 
         messages: list[dict] = [
@@ -368,7 +497,7 @@ class ResearchAgent:
         if not report.strip():
             return
         try:
-            paths = save_report(query, report, self.papers, self.config.output_dir)
+            paths = save_report(query, report, self.papers, self.config.output_dir, folder=self._output_folder or None)
             self.console.print(f"\n[green bold]Files saved:[/green bold]")
             for label, path in paths.items():
                 self.console.print(f"  {label}: [blue]{path}[/blue]")

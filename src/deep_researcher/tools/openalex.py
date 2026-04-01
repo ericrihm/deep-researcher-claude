@@ -14,6 +14,7 @@ _RETRIABLE_STATUSES = {429, 500, 502, 503}
 
 class OpenAlexSearchTool(Tool):
     name = "search_openalex"
+    category = "open_access"
     description = (
         "Search OpenAlex for academic papers. Covers 250M+ works across all fields. "
         "Fully open dataset with excellent metadata coverage. Good for broad searches "
@@ -39,6 +40,14 @@ class OpenAlexSearchTool(Tool):
         params: dict = {"search": query, "per_page": max_results}
         if self._email:
             params["mailto"] = self._email
+        # OpenAlex supports year range via filter param
+        year_filters = []
+        if self._start_year is not None:
+            year_filters.append(f"publication_year:>{self._start_year - 1}")
+        if self._end_year is not None:
+            year_filters.append(f"publication_year:<{self._end_year + 1}")
+        if year_filters:
+            params["filter"] = ",".join(year_filters)
 
         try:
             resp = None
@@ -57,7 +66,9 @@ class OpenAlexSearchTool(Tool):
         if not results:
             return ToolResult(text="No papers found on OpenAlex for this query.")
 
-        papers = [_parse_openalex_work(w) for w in results]
+        papers = self._filter_by_year([_parse_openalex_work(w) for w in results])
+        if not papers:
+            return ToolResult(text="No papers found on OpenAlex for this query (after year filter).")
         lines = [f"Found {len(papers)} papers on OpenAlex:\n"]
         for i, p in enumerate(papers, 1):
             lines.append(f"{i}. {p.to_summary()}\n")

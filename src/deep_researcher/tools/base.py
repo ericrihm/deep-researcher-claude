@@ -15,16 +15,45 @@ class Tool:
     description: str = ""
     parameters: dict[str, Any] = {}
     is_read_only: bool = True
+    # Taxonomy: helps the agent reason about which tools to use when
+    # Values: "preprint", "index", "open_access", "publisher", "citation", "utility"
+    category: str = "index"
+    # Year range filter (set at construction, applied automatically)
+    _start_year: int | None = None
+    _end_year: int | None = None
+
+    def set_year_range(self, start_year: int | None, end_year: int | None) -> None:
+        self._start_year = start_year
+        self._end_year = end_year
+
+    def _filter_by_year(self, papers: list) -> list:
+        """Post-filter papers by year range (fallback when API doesn't support date filters)."""
+        if self._start_year is None and self._end_year is None:
+            return papers
+        filtered = []
+        for p in papers:
+            if p.year is None:
+                filtered.append(p)  # Keep papers with unknown year
+                continue
+            if self._start_year is not None and p.year < self._start_year:
+                continue
+            if self._end_year is not None and p.year > self._end_year:
+                continue
+            filtered.append(p)
+        return filtered
 
     def execute(self, **kwargs: Any) -> ToolResult:
         raise NotImplementedError
 
     def to_openai_schema(self) -> dict[str, Any]:
+        desc = self.description
+        if self.category:
+            desc = f"[{self.category}] {desc}"
         return {
             "type": "function",
             "function": {
                 "name": self.name,
-                "description": self.description,
+                "description": desc,
                 "parameters": self.parameters,
             },
         }

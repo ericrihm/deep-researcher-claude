@@ -16,6 +16,7 @@ _RETRIABLE_STATUSES = {429, 500, 502, 503}
 
 class PubMedSearchTool(Tool):
     name = "search_pubmed"
+    category = "index"
     description = (
         "Search PubMed for biomedical and life sciences literature. Covers 36M+ "
         "citations including biomedicine, health, genomics, and related fields. "
@@ -36,12 +37,21 @@ class PubMedSearchTool(Tool):
     def execute(self, query: str, max_results: int = 10) -> ToolResult:
         max_results = min(max_results, 20)
 
+        search_params: dict = {"db": "pubmed", "term": query, "retmax": max_results, "retmode": "json"}
+        # PubMed supports date range via mindate/maxdate
+        if self._start_year is not None or self._end_year is not None:
+            search_params["datetype"] = "pdat"
+            if self._start_year is not None:
+                search_params["mindate"] = str(self._start_year)
+            if self._end_year is not None:
+                search_params["maxdate"] = str(self._end_year)
+
         try:
             resp = None
             for attempt in range(3):
                 resp = httpx.get(
                     f"{EUTILS_BASE}/esearch.fcgi",
-                    params={"db": "pubmed", "term": query, "retmax": max_results, "retmode": "json"},
+                    params=search_params,
                     timeout=30,
                 )
                 if resp.status_code in _RETRIABLE_STATUSES:
@@ -73,7 +83,7 @@ class PubMedSearchTool(Tool):
         except httpx.HTTPError as e:
             return ToolResult(text=f"Error fetching PubMed details: {e}")
 
-        papers = _parse_pubmed_xml(resp.text)
+        papers = self._filter_by_year(_parse_pubmed_xml(resp.text))
         if not papers:
             return ToolResult(text="No papers found on PubMed for this query.")
 

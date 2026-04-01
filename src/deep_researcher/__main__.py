@@ -37,6 +37,9 @@ def main() -> None:
     parser.add_argument("--email", default=None, help="Email for polite API access to OpenAlex/CrossRef/Unpaywall")
     parser.add_argument("--breadth", type=int, default=None, help="Search breadth: query variations (1-5, default: 3)")
     parser.add_argument("--depth", type=int, default=None, help="Search depth: citation rounds (0-5, default: 2)")
+    parser.add_argument("--start-year", type=int, default=None, help="Filter papers published on or after this year")
+    parser.add_argument("--end-year", type=int, default=None, help="Filter papers published on or before this year")
+    parser.add_argument("--interactive", action="store_true", help="Ask clarifying questions before researching")
     parser.add_argument("--version", action="version", version=f"deep-researcher {__version__}")
     args = parser.parse_args()
 
@@ -81,6 +84,12 @@ def main() -> None:
         config.breadth = max(1, min(args.breadth, 5))
     if args.depth is not None:
         config.depth = max(0, min(args.depth, 5))
+    if args.start_year is not None:
+        config.start_year = args.start_year
+    if args.end_year is not None:
+        config.end_year = args.end_year
+    if args.interactive:
+        config.interactive = True
 
     # Check for missing API key on cloud providers
     if not config.api_key or config.api_key in ("ollama", "lm-studio"):
@@ -90,11 +99,18 @@ def main() -> None:
             sys.exit(1)
 
     console.print(f"[dim]Model: {config.model} @ {config.base_url}[/dim]")
-    console.print(f"[dim]Settings: breadth={config.breadth} depth={config.depth} max_iter={config.max_iterations}[/dim]")
+    settings_parts = [f"breadth={config.breadth}", f"depth={config.depth}", f"max_iter={config.max_iterations}"]
+    if config.start_year is not None or config.end_year is not None:
+        yr_range = f"{config.start_year if config.start_year is not None else '...'}-{config.end_year if config.end_year is not None else '...'}"
+        settings_parts.append(f"years={yr_range}")
+    console.print(f"[dim]Settings: {' '.join(settings_parts)}[/dim]")
 
     agent = ResearchAgent(config)
+    query = args.query
+    if config.interactive:
+        query = agent.clarify(query)
     try:
-        report = agent.research(args.query)
+        report = agent.research(query)
         if report:
             console.print("\n")
             try:
@@ -106,7 +122,7 @@ def main() -> None:
         console.print("\n[yellow]Research interrupted.[/yellow]")
         if agent.papers:
             console.print(f"[yellow]Saving {len(agent.papers)} papers collected so far...[/yellow]")
-            agent._save(args.query, "# Research Interrupted\n\nPartial results: research was interrupted before synthesis.")
+            agent._save(query, "# Research Interrupted\n\nPartial results: research was interrupted before synthesis.")
         sys.exit(1)
 
 
