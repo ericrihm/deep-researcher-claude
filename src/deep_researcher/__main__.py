@@ -66,6 +66,9 @@ def main() -> None:
         config.base_url = preset["base_url"]
         config.api_key = preset["api_key"]
         config.model = preset["default_model"]
+        # Local models need longer timeouts for synthesis (large prompt + long response)
+        if args.provider in ("ollama", "lmstudio"):
+            config.timeout = 300
 
     # Explicit args override provider preset
     if args.model:
