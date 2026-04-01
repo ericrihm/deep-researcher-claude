@@ -1092,18 +1092,21 @@ def _paper_short_entry(idx: int, p) -> str:
 def _is_relevant(paper, query: str, method_terms: list[str] = None, domain_terms: list[str] = None) -> bool:
     """Relevance check using LLM-extracted term groups.
 
-    If method_terms and domain_terms are provided (extracted at research start),
-    a paper must match at least one term from EACH group.
-    If not provided, falls back to basic phrase matching.
+    A paper must match at least one METHOD term AND at least one DOMAIN term.
+    For compound phrases (2+ words), also generates 2-word sub-phrases to
+    handle cases where the paper uses different word order or partial matches.
     """
     paper_text = ((paper.title or "") + " " + (paper.abstract or "")).lower()
     if not paper_text.strip():
         return True  # Keep papers with no text (can't judge)
 
-    # Primary: use extracted term groups (METHOD + DOMAIN must both match)
     if method_terms and domain_terms:
-        has_method = any(term in paper_text for term in method_terms)
-        has_domain = any(term in paper_text for term in domain_terms)
+        # Generate matching terms: original terms + 2-word sub-phrases from compound terms
+        method_match = _expand_for_matching(method_terms)
+        domain_match = _expand_for_matching(domain_terms)
+
+        has_method = any(term in paper_text for term in method_match)
+        has_domain = any(term in paper_text for term in domain_match)
         return has_method and has_domain
 
     # Fallback: basic phrase matching from query words
@@ -1115,6 +1118,32 @@ def _is_relevant(paper, query: str, method_terms: list[str] = None, domain_terms
             if phrase in paper_text:
                 return True
     return False
+
+
+def _expand_for_matching(terms: list[str]) -> list[str]:
+    """Expand compound terms into sub-phrases for flexible matching.
+
+    "automated code compliance checking bim" generates:
+    - The original: "automated code compliance checking bim"
+    - 2-word sub-phrases: "code compliance", "compliance checking"
+    - Individual key words (4+ chars): "automated", "compliance", "checking"
+
+    This way "Code Compliance Checking in Building Information Modeling"
+    matches via the sub-phrase "code compliance" even though the full
+    compound term doesn't appear verbatim.
+    """
+    expanded = set()
+    for term in terms:
+        term = term.lower().strip()
+        expanded.add(term)  # Keep original
+
+        words = term.split()
+        if len(words) >= 2:
+            # Add 2-word sub-phrases
+            for i in range(len(words) - 1):
+                bigram = f"{words[i]} {words[i + 1]}"
+                expanded.add(bigram)
+    return list(expanded)
 
 
 def _truncate(s: str, n: int) -> str:
