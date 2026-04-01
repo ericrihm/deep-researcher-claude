@@ -14,6 +14,7 @@ _RETRIABLE_STATUSES = {429, 500, 502, 503}
 
 class ScopusSearchTool(Tool):
     name = "search_scopus"
+    category = "publisher"
     description = (
         "Search Scopus (Elsevier) for academic papers. Covers 90M+ records from most "
         "major publishers including Elsevier, Springer, Wiley, IEEE, ASCE, and ACM. "
@@ -51,6 +52,11 @@ class ScopusSearchTool(Tool):
         # Wrap plain text queries in TITLE-ABS-KEY() for better results
         if not any(kw in query.upper() for kw in ("TITLE-ABS-KEY", "TITLE(", "ABS(", "KEY(", "AU-ID", "ISSN(")):
             query = f"TITLE-ABS-KEY({query})"
+        # Scopus supports year filtering via PUBYEAR in query
+        if self._start_year is not None:
+            query += f" AND PUBYEAR > {self._start_year - 1}"
+        if self._end_year is not None:
+            query += f" AND PUBYEAR < {self._end_year + 1}"
 
         try:
             resp = None
@@ -90,7 +96,7 @@ class ScopusSearchTool(Tool):
         if not results or (len(results) == 1 and results[0].get("error")):
             return ToolResult(text="No papers found on Scopus for this query.")
 
-        papers = [p for r in results if (p := _parse_scopus_entry(r)) is not None]
+        papers = self._filter_by_year([p for r in results if (p := _parse_scopus_entry(r)) is not None])
         if not papers:
             return ToolResult(text="No papers found on Scopus for this query.")
 

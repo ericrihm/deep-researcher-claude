@@ -14,6 +14,7 @@ _RETRIABLE_STATUSES = {429, 500, 502, 503}
 
 class OpenAccessTool(Tool):
     name = "find_open_access"
+    category = "utility"
     description = (
         "Check if a paper has a free open access version available. Uses the Unpaywall "
         "database which tracks legal open access copies of papers. Provide a DOI to check. "

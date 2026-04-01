@@ -14,6 +14,7 @@ _RETRIABLE_STATUSES = {429, 500, 502, 503}
 
 class CrossrefSearchTool(Tool):
     name = "search_crossref"
+    category = "publisher"
     description = (
         "Search CrossRef for academic papers by DOI metadata. Covers 150M+ records "
         "from most major publishers (Elsevier, Springer, Wiley, IEEE, etc.). "
@@ -40,12 +41,22 @@ class CrossrefSearchTool(Tool):
         if self._email:
             headers["User-Agent"] = f"DeepResearcher/0.2 (mailto:{self._email})"
 
+        params: dict = {"query": query, "rows": max_results, "sort": "relevance"}
+        # CrossRef supports date filtering via filter param
+        filters = []
+        if self._start_year is not None:
+            filters.append(f"from-pub-date:{self._start_year}")
+        if self._end_year is not None:
+            filters.append(f"until-pub-date:{self._end_year}")
+        if filters:
+            params["filter"] = ",".join(filters)
+
         try:
             resp = None
             for attempt in range(3):
                 resp = httpx.get(
                     f"{CROSSREF_BASE}/works",
-                    params={"query": query, "rows": max_results, "sort": "relevance"},
+                    params=params,
                     headers=headers,
                     timeout=30,
                 )
@@ -68,6 +79,7 @@ class CrossrefSearchTool(Tool):
             if titles and titles[0]:
                 papers.append(_parse_crossref_item(item))
 
+        papers = self._filter_by_year(papers)
         if not papers:
             return ToolResult(text="No papers found on CrossRef for this query.")
 

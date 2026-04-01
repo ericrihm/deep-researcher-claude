@@ -15,6 +15,7 @@ _RETRIABLE_STATUSES = {429, 500, 502, 503}
 
 class ArxivSearchTool(Tool):
     name = "search_arxiv"
+    category = "preprint"
     description = (
         "Search arXiv for preprints and papers. Covers physics, mathematics, "
         "computer science, quantitative biology, statistics, electrical engineering, "
@@ -57,7 +58,7 @@ class ArxivSearchTool(Tool):
         except httpx.HTTPError as e:
             return ToolResult(text=f"Error searching arXiv: {e}")
 
-        papers = _parse_arxiv_response(resp.text)
+        papers = self._filter_by_year(_parse_arxiv_response(resp.text))
         if not papers:
             return ToolResult(text="No papers found on arXiv for this query.")
 
