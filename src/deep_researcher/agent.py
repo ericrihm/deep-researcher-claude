@@ -459,10 +459,11 @@ class ResearchAgent:
             self.console.print("  [yellow]No extracted terms — skipping systematic search[/yellow]")
             return
 
-        # Get search tools (exclude citation/utility tools — those are for the LLM phase)
+        # Get search tools (exclude unreliable/utility tools)
+        _EXCLUDED = {"search_core", "search_semantic_scholar"}  # S2 rate-limits aggressively without API key
         search_tools = [
             t for t in self.registry.all()
-            if t.name.startswith("search_") and t.name not in ("search_core",)
+            if t.name.startswith("search_") and t.name not in _EXCLUDED
         ]
         if not search_tools:
             return
@@ -474,20 +475,28 @@ class ResearchAgent:
         self.console.print(f"  [dim]{len(self._method_terms)} method × {len(self._domain_terms)} domain = {total_combinations} combinations[/dim]")
 
         combo_count = 0
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        def _search_one(tool, sq):
+            try:
+                return tool.execute(query=sq, max_results=10)
+            except Exception:
+                return None
+
         for domain_term in self._domain_terms:
             for method_term in self._method_terms:
                 combo_count += 1
                 search_query = f"{method_term} {domain_term}"
                 papers_before = len(self.papers)
 
-                # Search all databases with this combination
-                for tool in search_tools:
-                    try:
-                        result = tool.execute(query=search_query, max_results=10)
-                        for paper in result.papers:
-                            self._track_paper(paper, query)
-                    except Exception:
-                        continue
+                # Search all databases CONCURRENTLY for this combination
+                with ThreadPoolExecutor(max_workers=len(search_tools)) as pool:
+                    futures = {pool.submit(_search_one, t, search_query): t for t in search_tools}
+                    for future in as_completed(futures):
+                        result = future.result()
+                        if result:
+                            for paper in result.papers:
+                                self._track_paper(paper, query)
 
                 new_papers = len(self.papers) - papers_before
                 if new_papers > 0:
