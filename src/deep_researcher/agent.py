@@ -326,21 +326,32 @@ Given this research query, extract key search term groups for academic database 
 Query: "{query}"
 
 Return exactly two groups:
-METHOD: comma-separated list of method/technique terms, their synonyms, AND specific sub-techniques
-DOMAIN: comma-separated list of domain/application terms and their synonyms (these are the CORE terms)
+METHOD: the specific technique and its close variants/sub-techniques (5-8 terms)
+DOMAIN: compound phrases describing the application area (3-4 phrases)
 
-Example for "transformer models in structural health monitoring":
-METHOD: transformer, attention mechanism, vision transformer, self-attention, ViT, encoder-decoder, deep learning, CNN-transformer, fine-tuning
-DOMAIN: structural health monitoring, SHM, damage detection, crack detection, structural integrity, structural assessment
+IMPORTANT:
+- DOMAIN terms must be COMPOUND PHRASES (2-4 words), not single keywords
+- DOMAIN terms are the CORE anchor — they must be specific enough to filter out unrelated work
+- METHOD terms should be the specific technique, not generic ML terms
 
 Example for "large language models for automated code compliance checking BIM":
-METHOD: large language model, LLM, NLP, GPT, BERT, fine-tuning, prompt engineering, RAG, retrieval augmented generation, deep learning
-DOMAIN: code compliance, building regulations, BIM, building information modeling, automated compliance checking
+METHOD: large language model, LLM, GPT, NLP, fine-tuning, prompt engineering, RAG
+DOMAIN: code compliance checking BIM, automated building regulation compliance, building code compliance checking
+
+Example for "transformer models in structural health monitoring":
+METHOD: transformer, vision transformer, self-attention, attention mechanism, ViT, fine-tuning
+DOMAIN: structural health monitoring damage detection, SHM crack detection, structural integrity monitoring
+
+BAD domain terms (too vague, will match unrelated papers):
+- "BIM" alone (matches any BIM paper)
+- "building" alone
+- "compliance" alone
+- "deep learning" as a method (too generic)
+- "transformer" alone for an LLM query (matches electrical transformers)
 
 Rules:
-- METHOD: include the broad technique AND specific sub-techniques (e.g., for LLM: also include fine-tuning, prompt engineering, RAG, GPT, BERT)
-- DOMAIN: include the core field terms and common abbreviations
-- Include 8-12 method terms and 4-6 domain terms
+- 5-8 method terms, 3-4 domain terms
+- Domain terms MUST be 2-4 word compound phrases
 - Return ONLY the two lines, nothing else
 """
 
