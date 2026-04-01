@@ -28,16 +28,26 @@ def _build_search_prompt(config: Config) -> str:
 You are a research paper collector. Your ONLY job right now is to find as many relevant \
 papers as possible on the given topic. Do NOT write a report. Just search.
 {year_note}
-## Strategy — Quality First
+## Strategy — Quality First, Precise Queries
 1. **Start with peer-reviewed sources:** Search Scopus, Semantic Scholar, IEEE Xplore, \
 and PubMed FIRST. These index curated, peer-reviewed literature.
 2. Then broaden to CrossRef and OpenAlex for additional coverage.
-3. Use arXiv and CORE last — for cutting-edge preprints and open access, but \
-note these are NOT peer-reviewed and may contain lower-quality work.
+3. Use arXiv and CORE only for **specific, targeted queries** — NOT broad topic searches. \
+These are unvetted and return noise on broad queries.
 4. Break the topic into {config.breadth} different search angles using varied terminology.
 5. When you find highly-cited papers (>50 citations), follow their citation chains.
 6. Use get_paper_details on papers that appear in multiple databases.
 7. Look for survey/review papers — they reference dozens of other relevant papers.
+
+## CRITICAL: Query Formulation
+- Use **specific multi-word phrases**, not single keywords
+- GOOD: "transformer neural network structural health monitoring"
+- GOOD: "attention mechanism damage detection bridge"
+- GOOD: "vision transformer crack segmentation infrastructure"
+- BAD: "monitoring" (too vague — matches weather monitoring, health monitoring, etc.)
+- BAD: "transformer" alone (matches electrical transformers, not neural networks)
+- BAD: "structural health" (too broad — matches unrelated fields)
+- Each query should combine the METHOD + DOMAIN to get precise results
 
 ## When to Stop
 Stop searching (respond WITHOUT any tool calls) when:
@@ -48,7 +58,7 @@ Stop searching (respond WITHOUT any tool calls) when:
 
 ## Rules
 - **Quality over quantity** — 30 peer-reviewed papers beat 100 unvetted ones
-- Search aggressively but prioritize curated databases
+- **Precision over recall** — irrelevant papers waste synthesis capacity
 - Use different terminology across databases (different fields use different terms)
 - Prioritize recent work AND foundational papers
 - Do NOT write any analysis or report yet — just search
@@ -74,6 +84,7 @@ Stop searching (respond WITHOUT any tool calls) when:
 # --- Multi-step synthesis prompts (STORM-inspired + Claude Code token budgeting) ---
 
 _CATEGORIZE_PROMPT = """\
+/no_think
 You are a research librarian. Below are {count} papers on: "{query}"
 
 Assign each paper to exactly one category (3-6 categories). \
@@ -233,6 +244,32 @@ def _build_paper_corpus(papers: dict[str, Paper]) -> str:
     return "\n\n".join(lines)
 
 
+_EXTRACT_TERMS_PROMPT = """\
+/no_think
+Given this research query, extract the key search term groups.
+
+Query: "{query}"
+
+Return exactly two groups:
+METHOD: comma-separated list of method/technique terms and their synonyms
+DOMAIN: comma-separated list of domain/application terms and their synonyms
+
+Example for "transformer models in structural health monitoring":
+METHOD: transformer, attention mechanism, vision transformer, self-attention, ViT, encoder-decoder
+DOMAIN: structural health monitoring, SHM, damage detection, crack detection, structural integrity, structural assessment
+
+Example for "CRISPR gene editing in cancer therapy":
+METHOD: CRISPR, gene editing, Cas9, genome editing, CRISPR-Cas
+DOMAIN: cancer therapy, oncology, tumor treatment, cancer treatment, anti-cancer
+
+Rules:
+- Include common synonyms and abbreviations for each group
+- METHOD = the technique/approach being studied
+- DOMAIN = the field/application area
+- Return ONLY the two lines, nothing else
+"""
+
+
 _CLARIFY_PROMPT = """\
 You are a research assistant helping to refine a research question before searching academic databases.
 
@@ -256,6 +293,9 @@ class ResearchAgent:
         self._databases_used: set[str] = set()
         self._tool_call_count = 0
         self._output_folder: str = ""
+        self._rejected_count = 0
+        self._method_terms: list[str] = []
+        self._domain_terms: list[str] = []
 
     def clarify(self, query: str) -> str:
         """Ask clarifying questions and return an enhanced query."""
@@ -297,6 +337,32 @@ class ResearchAgent:
         self.console.print(f"\n[green]Enhanced query ready.[/green]")
         return enhanced
 
+    def _extract_search_terms(self, query: str) -> None:
+        """Extract METHOD and DOMAIN term groups from the query via LLM."""
+        self.console.print("[dim]Extracting search terms...[/dim]")
+        try:
+            response = self.llm.chat([
+                {"role": "system", "content": _EXTRACT_TERMS_PROMPT.format(query=query)},
+                {"role": "user", "content": "Extract the terms now."},
+            ])
+            text = response.content or ""
+            for line in text.strip().split("\n"):
+                line = line.strip()
+                if line.upper().startswith("METHOD"):
+                    raw = line.split(":", 1)[1] if ":" in line else ""
+                    self._method_terms = [t.strip().lower() for t in raw.split(",") if t.strip()]
+                elif line.upper().startswith("DOMAIN"):
+                    raw = line.split(":", 1)[1] if ":" in line else ""
+                    self._domain_terms = [t.strip().lower() for t in raw.split(",") if t.strip()]
+        except Exception as e:
+            logger.warning("Term extraction failed: %s", e)
+
+        if self._method_terms and self._domain_terms:
+            self.console.print(f"  [green]Method terms:[/green] {', '.join(self._method_terms)}")
+            self.console.print(f"  [green]Domain terms:[/green] {', '.join(self._domain_terms)}")
+        else:
+            self.console.print("  [yellow]Could not extract terms — relevance filter disabled[/yellow]")
+
     def research(self, query: str) -> str:
         self.console.print(Panel(
             f"[bold]{query}[/bold]\n[dim]breadth={self.config.breadth}  depth={self.config.depth}  max_iter={self.config.max_iterations}[/dim]",
@@ -306,6 +372,9 @@ class ResearchAgent:
 
         # Create output folder early for checkpoints
         self._output_folder = get_output_folder(query, self.config.output_dir)
+
+        # Extract search terms for relevance filtering
+        self._extract_search_terms(query)
 
         # === PHASE 1 & 2: Search (gather papers) ===
         self.console.print("\n[bold blue]Phase 1-2: Searching databases...[/bold blue]")
@@ -387,7 +456,7 @@ class ResearchAgent:
                 self.console.print(f"  [cyan]{tc_info['name']}[/cyan] -> {_truncate(result.text, 100)}")
 
                 for paper in result.papers:
-                    self._track_paper(paper)
+                    self._track_paper(paper, query)
 
                 messages.append({
                     "role": "tool",
@@ -397,7 +466,8 @@ class ResearchAgent:
             new_papers = len(self.papers) - papers_before
 
             new_label = f" (+{new_papers} new)" if new_papers else " (no new)"
-            self.console.print(f"  [yellow]Total: {len(self.papers)} unique papers{new_label} from {len(self._databases_used)} databases[/yellow]")
+            rejected_label = f", {self._rejected_count} irrelevant filtered" if self._rejected_count else ""
+            self.console.print(f"  [yellow]Total: {len(self.papers)} unique papers{new_label} from {len(self._databases_used)} databases{rejected_label}[/yellow]")
 
             # Inject reflection prompt (adapts strategy: broad → focused → gap-filling)
             progress = iteration / self.config.max_iterations
@@ -417,11 +487,18 @@ class ResearchAgent:
                     "foundational papers, or sub-topics with few results. Fill those specific gaps."
                 )
 
+            rejected_note = ""
+            if self._rejected_count:
+                rejected_note = (
+                    f" ({self._rejected_count} irrelevant papers were automatically filtered out — "
+                    f"use more specific queries to avoid this.)"
+                )
             reflection = (
                 f"[SEARCH STATUS for \"{query}\"] "
-                f"{len(self.papers)} papers collected from {len(self._databases_used)} databases "
-                f"({', '.join(sorted(self._databases_used))}). "
+                f"{len(self.papers)} relevant papers from {len(self._databases_used)} databases "
+                f"({', '.join(sorted(self._databases_used))}).{rejected_note} "
                 f"{phase_hint} "
+                f"IMPORTANT: Use specific multi-word queries combining method + domain. "
                 f"Continue searching for papers on \"{query}\" — call search tools to fill gaps, "
                 f"or stop (no tool calls) if you have good coverage."
             )
@@ -508,32 +585,53 @@ class ResearchAgent:
         return self._assemble_report(query, synthesis_papers, categories, category_sections, cross_section)
 
     def _categorize_papers(self, query: str, papers: list[Paper]) -> dict[str, list[int]]:
-        """Step 1: Assign papers to categories. Returns {category_name: [paper_indices]}."""
-        # Build lightweight one-line-per-paper list for categorization
-        lines = []
-        for i, p in enumerate(papers):
-            author = p.authors[0] if p.authors else "Unknown"
-            if len(p.authors) > 1:
-                author += " et al."
-            year = p.year or "n.d."
-            cites = f", {p.citation_count} cites" if p.citation_count else ""
-            lines.append(f"{i + 1}. {p.title} ({author}, {year}{cites})")
+        """Step 1: Assign papers to categories in batches.
 
-        prompt = _CATEGORIZE_PROMPT.format(
-            count=len(papers),
-            query=query,
-            paper_list="\n".join(lines),
-        )
+        Processes papers in groups of 50 to stay within local model limits,
+        then merges category assignments across batches.
+        """
+        _BATCH_SIZE = 40
+        all_categories: dict[str, list[int]] = {}
 
-        try:
-            response = self.llm.chat([
-                {"role": "system", "content": prompt},
-                {"role": "user", "content": "Categorize these papers now."},
-            ])
-            return _parse_categories(response.content or "", len(papers))
-        except Exception as e:
-            logger.warning("Categorization failed: %s", e)
-            return {}
+        for batch_start in range(0, len(papers), _BATCH_SIZE):
+            batch_end = min(batch_start + _BATCH_SIZE, len(papers))
+            batch = papers[batch_start:batch_end]
+
+            lines = []
+            for i, p in enumerate(batch):
+                global_idx = batch_start + i
+                author = p.authors[0] if p.authors else "Unknown"
+                if len(p.authors) > 1:
+                    author += " et al."
+                year = p.year or "n.d."
+                cites = f", {p.citation_count} cites" if p.citation_count else ""
+                abstract = f"\n   Abstract: {p.abstract}" if p.abstract else ""
+                lines.append(f"{global_idx + 1}. {p.title} ({author}, {year}{cites}){abstract}")
+
+            prompt = _CATEGORIZE_PROMPT.format(
+                count=len(batch),
+                query=query,
+                paper_list="\n".join(lines),
+            )
+
+            try:
+                self.console.print(f"    [dim]Batch {batch_start + 1}-{batch_end} of {len(papers)}...[/dim]")
+                response = self.llm.chat([
+                    {"role": "system", "content": prompt},
+                    {"role": "user", "content": "Categorize these papers now."},
+                ])
+                batch_cats = _parse_categories(response.content or "", len(papers))
+                # Merge into overall categories
+                for cat_name, indices in batch_cats.items():
+                    if cat_name in all_categories:
+                        all_categories[cat_name].extend(indices)
+                    else:
+                        all_categories[cat_name] = indices
+            except Exception as e:
+                logger.warning("Categorization batch %d-%d failed: %s", batch_start, batch_end, e)
+                continue  # Skip this batch, continue with others
+
+        return all_categories
 
     def _synthesize_category(self, query: str, cat_name: str, papers: list[Paper]) -> str:
         """Step 2: Synthesize one category with token-budgeted paper injection.
@@ -629,9 +727,11 @@ class ResearchAgent:
 
     def _fallback_synthesis(self, query: str, papers: list[Paper]) -> str:
         """Single-pass fallback if multi-step synthesis fails."""
-        corpus = _build_paper_corpus({p.unique_key: p for p in papers[:50]})
+        # Use top 20 papers with tiered corpus to keep within local model limits
+        top_papers = papers[:20]
+        corpus = _build_tiered_corpus(top_papers, token_budget=8000)
         prompt = (
-            f"Write a brief literature review on \"{query}\" based on these {min(len(papers), 50)} papers. "
+            f"Write a brief literature review on \"{query}\" based on these {len(top_papers)} papers. "
             f"Categorize by theme, include a table per category.\n\n{corpus}"
         )
         try:
@@ -643,7 +743,12 @@ class ResearchAgent:
         except Exception as e:
             return f"Synthesis failed: {e}"
 
-    def _track_paper(self, paper: Paper) -> None:
+    def _track_paper(self, paper: Paper, query: str = "") -> None:
+        # Relevance filter: reject papers that don't match both METHOD and DOMAIN terms
+        if query and not _is_relevant(paper, query, self._method_terms, self._domain_terms):
+            self._rejected_count += 1
+            return
+
         key = paper.unique_key
         if key in self.papers:
             self.papers[key].merge(paper)
@@ -806,6 +911,34 @@ def _paper_short_entry(idx: int, p) -> str:
     year = p.year or "n.d."
     cites = f", {p.citation_count} cites" if p.citation_count else ""
     return f"[{idx}] {p.title} ({author}, {year}{cites})"
+
+
+def _is_relevant(paper, query: str, method_terms: list[str] = None, domain_terms: list[str] = None) -> bool:
+    """Relevance check using LLM-extracted term groups.
+
+    If method_terms and domain_terms are provided (extracted at research start),
+    a paper must match at least one term from EACH group.
+    If not provided, falls back to basic phrase matching.
+    """
+    paper_text = ((paper.title or "") + " " + (paper.abstract or "")).lower()
+    if not paper_text.strip():
+        return True  # Keep papers with no text (can't judge)
+
+    # Primary: use extracted term groups (METHOD + DOMAIN must both match)
+    if method_terms and domain_terms:
+        has_method = any(term in paper_text for term in method_terms)
+        has_domain = any(term in paper_text for term in domain_terms)
+        return has_method and has_domain
+
+    # Fallback: basic phrase matching from query words
+    import re as _re
+    query_words = _re.findall(r"[a-z]{3,}", query.lower())
+    for n in (3, 2):
+        for i in range(len(query_words) - n + 1):
+            phrase = " ".join(query_words[i:i + n])
+            if phrase in paper_text:
+                return True
+    return False
 
 
 def _truncate(s: str, n: int) -> str:
