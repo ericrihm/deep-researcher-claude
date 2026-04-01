@@ -397,11 +397,12 @@ class ResearchAgent:
                 )
 
             reflection = (
-                f"Status: {len(self.papers)} papers from {len(self._databases_used)} databases "
+                f"[SEARCH STATUS for \"{query}\"] "
+                f"{len(self.papers)} papers collected from {len(self._databases_used)} databases "
                 f"({', '.join(sorted(self._databases_used))}). "
                 f"{phase_hint} "
-                f"What topics, methods, or time periods are underrepresented? "
-                f"Search to fill those gaps, or stop if you have good coverage."
+                f"Continue searching for papers on \"{query}\" — call search tools to fill gaps, "
+                f"or stop (no tool calls) if you have good coverage."
             )
             messages.append({"role": "user", "content": reflection})
 
