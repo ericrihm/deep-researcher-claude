@@ -36,7 +36,7 @@ class Config:
     ieee_api_key: str = ""
     breadth: int = 3
     depth: int = 2
-    timeout: int = 60
+    timeout: int = 300  # 5 min — local models need time for synthesis
     start_year: int | None = None
     end_year: int | None = None
     interactive: bool = False
