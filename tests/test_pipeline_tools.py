@@ -72,3 +72,65 @@ class TestScholarSearchTool:
     def test_is_read_only(self):
         tool = self._make_tool()
         assert tool.is_read_only is True
+
+
+from unittest.mock import MagicMock, patch
+
+
+class TestEnrichmentTool:
+    def _make_tool(self):
+        from deep_researcher.tools.enrichment import EnrichmentTool
+        return EnrichmentTool()
+
+    def _mock_openalex_response(self, title="Paper A", doi="10.1234/test", cited_by=50):
+        inv_idx = {"This": [0], "is": [1], "a": [2], "test": [3], "abstract": [4]}
+        return {
+            "results": [{
+                "title": title,
+                "doi": f"https://doi.org/{doi}",
+                "abstract_inverted_index": inv_idx,
+                "primary_location": {"source": {"display_name": "Nature"}},
+                "open_access": {"oa_url": "http://oa.example.com"},
+                "cited_by_count": cited_by,
+            }]
+        }
+
+    def test_enriches_papers_from_openalex(self):
+        tool = self._make_tool()
+        papers = [Paper(title="Paper A", authors=["Alice"], year=2023)]
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = self._mock_openalex_response()
+        with patch("deep_researcher.tools.enrichment.httpx") as mock_httpx:
+            mock_httpx.get.return_value = mock_resp
+            result = tool.execute(papers=papers, email="test@example.com")
+        assert len(result.papers) == 1
+        assert result.papers[0].doi == "10.1234/test"
+        assert result.papers[0].journal == "Nature"
+
+    def test_returns_original_on_failure(self):
+        tool = self._make_tool()
+        papers = [Paper(title="Paper A", authors=["Alice"], year=2023)]
+        with patch("deep_researcher.tools.enrichment.httpx") as mock_httpx:
+            mock_httpx.get.side_effect = Exception("Network error")
+            result = tool.execute(papers=papers, email="test@example.com")
+        assert len(result.papers) == 1
+        assert result.papers[0].title == "Paper A"
+        assert result.papers[0].doi is None
+
+    def test_does_not_mutate_input_papers(self):
+        tool = self._make_tool()
+        original = Paper(title="Paper A", authors=["Alice"], year=2023)
+        papers = [original]
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = self._mock_openalex_response()
+        with patch("deep_researcher.tools.enrichment.httpx") as mock_httpx:
+            mock_httpx.get.return_value = mock_resp
+            result = tool.execute(papers=papers, email="test@example.com")
+        assert original.doi is None  # original not mutated
+        assert result.papers[0].doi == "10.1234/test"
+
+    def test_is_read_only(self):
+        tool = self._make_tool()
+        assert tool.is_read_only is True
