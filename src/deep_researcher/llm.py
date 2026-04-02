@@ -7,12 +7,9 @@ from openai import APIError, APITimeoutError, OpenAI, RateLimitError
 from openai.types.chat import ChatCompletionMessage
 
 from deep_researcher.config import Config
+from deep_researcher.errors import ToolCallingNotSupported
 
 logger = logging.getLogger("deep_researcher")
-
-
-class ToolCallingNotSupported(Exception):
-    """Raised when the model doesn't support function/tool calling."""
 
 # Rough token estimate: ~4 chars per token for English text
 _CHARS_PER_TOKEN = 4
@@ -64,11 +61,7 @@ class LLMClient:
                 err_str = str(e).lower()
                 # Detect models that don't support function calling
                 if any(hint in err_str for hint in ("tool", "function", "not supported", "invalid param")):
-                    raise ToolCallingNotSupported(
-                        f"Model '{self.model}' may not support function calling.\n"
-                        f"Recommended models: qwen3.5:9b (local), gpt-5.4-mini (OpenAI), claude-sonnet-4-6 (Anthropic)\n"
-                        f"Original error: {e}"
-                    ) from e
+                    raise ToolCallingNotSupported(model=self.model, original_error=e) from e
                 # Retry on server errors (5xx), fail fast on client errors (4xx)
                 if e.status_code and 500 <= e.status_code < 600:
                     last_error = e
