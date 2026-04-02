@@ -7,12 +7,10 @@ from openai import APIError, APITimeoutError, OpenAI, RateLimitError
 from openai.types.chat import ChatCompletionMessage
 
 from deep_researcher.config import Config
+from deep_researcher.constants import CHARS_PER_TOKEN
 from deep_researcher.errors import ToolCallingNotSupported
 
 logger = logging.getLogger("deep_researcher")
-
-# Rough token estimate: ~4 chars per token for English text
-_CHARS_PER_TOKEN = 4
 
 
 class LLMClient:
@@ -120,4 +118,4 @@ class LLMClient:
             for tc in msg.get("tool_calls", []):
                 total_chars += len(tc.get("function", {}).get("arguments", ""))
                 total_chars += 200  # Schema overhead
-        return total_chars // _CHARS_PER_TOKEN
+        return total_chars // CHARS_PER_TOKEN
