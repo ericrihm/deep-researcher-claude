@@ -10,6 +10,7 @@ from deep_researcher.constants import (
     ABSTRACT_MIN_CUT,
     CATEGORIZE_BATCH_SIZE,
     CATEGORY_SYNTHESIS_TIMEOUT,
+    MAX_FINAL_CATEGORIES,
     CATEGORY_TOKEN_BUDGET,
     CHARS_PER_TOKEN,
     FALLBACK_MAX_PAPERS,
@@ -128,6 +129,31 @@ Rules:
 - 3-6 categories total
 - Category names should be specific (e.g., "Vision-Based Damage Detection", not "Methods")
 - No explanation needed — just the categories and paper numbers
+"""
+
+_MERGE_CATEGORIES_PROMPT = """\
+/no_think
+You are a research librarian. Papers on "{query}" were categorized in batches, \
+producing {count} overlapping categories. Merge them into {target} final categories \
+by grouping semantically similar ones together.
+
+## Current categories (name -> paper count)
+{category_list}
+
+## Output Format
+Return ONLY a mapping in this exact format (one line per final category):
+
+FINAL: Final Category Name
+MERGE: Old Category A, Old Category B, Old Category C
+
+FINAL: Another Final Category
+MERGE: Old Category D, Old Category E
+
+Rules:
+- Exactly {target} final categories
+- Every old category must appear in exactly one MERGE line
+- Use the old category names exactly as listed above
+- Final category names should be descriptive (not generic like "Other")
 """
 
 _CATEGORY_SYNTHESIS_PROMPT = """\
@@ -836,7 +862,44 @@ class ResearchAgent:
                 logger.warning("Categorization batch %d-%d failed: %s", batch_start, batch_end, e)
                 continue  # Skip this batch, continue with others
 
+        # If batching produced too many categories, merge similar ones
+        if len(all_categories) > MAX_FINAL_CATEGORIES:
+            all_categories = self._merge_categories(query, all_categories)
+
         return all_categories
+
+    def _merge_categories(self, query: str, categories: dict[str, list[int]]) -> dict[str, list[int]]:
+        """Merge semantically similar categories from batch processing into target count.
+
+        When papers are categorized in batches, each batch invents its own names.
+        This pass asks the LLM to group similar names into MAX_FINAL_CATEGORIES groups.
+        """
+        cat_list = "\n".join(
+            f"- {name} ({len(indices)} papers)" for name, indices in categories.items()
+        )
+        prompt = _MERGE_CATEGORIES_PROMPT.format(
+            query=query,
+            count=len(categories),
+            target=MAX_FINAL_CATEGORIES,
+            category_list=cat_list,
+        )
+
+        try:
+            self.console.print(f"    [dim]Merging {len(categories)} batch categories into {MAX_FINAL_CATEGORIES}...[/dim]")
+            content = self.llm.chat_no_think([
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": "Merge the categories now."},
+            ])
+            merged = _parse_merged_categories(content, categories)
+            if merged:
+                return merged
+        except Exception as e:
+            logger.warning("Category merge failed: %s", e)
+
+        # Fallback: take the N largest categories
+        self.console.print(f"    [yellow]Merge failed — keeping {MAX_FINAL_CATEGORIES} largest categories[/yellow]")
+        sorted_cats = sorted(categories.items(), key=lambda x: -len(x[1]))
+        return dict(sorted_cats[:MAX_FINAL_CATEGORIES])
 
     def _synthesize_category(self, query: str, cat_name: str, papers: list[Paper]) -> str:
         """Step 2: Synthesize one category with token-budgeted paper injection.
@@ -1045,6 +1108,58 @@ def _parse_categories(text: str, paper_count: int) -> dict[str, list[int]]:
         logger.warning("Categorization covered only %d/%d papers", len(assigned), paper_count)
 
     return categories
+
+
+def _parse_merged_categories(
+    text: str, original: dict[str, list[int]]
+) -> dict[str, list[int]] | None:
+    """Parse LLM merge output into consolidated categories.
+
+    Expected format:
+    FINAL: Final Category Name
+    MERGE: Old Cat A, Old Cat B, Old Cat C
+    """
+    import re as _re
+    merged: dict[str, list[int]] = {}
+    current_final = None
+
+    for line in text.split("\n"):
+        cleaned = _re.sub(r"[*_`#>]", "", line).strip()
+        cleaned = _re.sub(r"^[-+]\s*", "", cleaned)
+        if not cleaned:
+            continue
+
+        final_match = _re.match(r"(?:FINAL)\s*:\s*(.+)", cleaned, _re.IGNORECASE)
+        if final_match:
+            current_final = final_match.group(1).strip()
+            continue
+
+        merge_match = _re.match(r"(?:MERGE)\s*:\s*(.+)", cleaned, _re.IGNORECASE)
+        if merge_match and current_final:
+            old_names = [n.strip() for n in merge_match.group(1).split(",")]
+            indices: list[int] = []
+            for old_name in old_names:
+                if old_name in original:
+                    indices.extend(original[old_name])
+                else:
+                    # Fuzzy match: find the closest original category name
+                    for orig_name in original:
+                        if old_name.lower() in orig_name.lower() or orig_name.lower() in old_name.lower():
+                            indices.extend(original[orig_name])
+                            break
+            if indices:
+                merged[current_final] = indices
+            current_final = None
+
+    # Validate: must have produced categories with papers
+    if not merged:
+        return None
+    total_papers = sum(len(v) for v in merged.values())
+    orig_total = sum(len(v) for v in original.values())
+    if total_papers < orig_total * 0.5:
+        logger.warning("Category merge lost too many papers (%d/%d)", total_papers, orig_total)
+        return None
+    return merged
 
 
 def _build_tiered_corpus(papers: list, token_budget: int = 15000) -> str:

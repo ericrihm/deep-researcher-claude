@@ -6,6 +6,7 @@ from deep_researcher.agent import (
     _expand_for_matching,
     _is_relevant,
     _parse_categories,
+    _parse_merged_categories,
 )
 from deep_researcher.models import Paper
 from deep_researcher.tools.base import Tool, ToolRegistry, ToolResult
@@ -78,6 +79,43 @@ class TestParseCategories:
 
     def test_empty_input(self):
         assert _parse_categories("", 5) == {}
+
+
+class TestParseMergedCategories:
+    def test_basic_merge(self):
+        original = {
+            "Crack Detection A": [0, 1],
+            "Crack Detection B": [2, 3],
+            "SHM Sensors": [4, 5],
+        }
+        text = (
+            "FINAL: Crack Detection\n"
+            "MERGE: Crack Detection A, Crack Detection B\n\n"
+            "FINAL: Sensor-Based SHM\n"
+            "MERGE: SHM Sensors\n"
+        )
+        result = _parse_merged_categories(text, original)
+        assert result is not None
+        assert "Crack Detection" in result
+        assert sorted(result["Crack Detection"]) == [0, 1, 2, 3]
+        assert result["Sensor-Based SHM"] == [4, 5]
+
+    def test_returns_none_on_empty(self):
+        assert _parse_merged_categories("", {"A": [0]}) is None
+
+    def test_returns_none_if_too_many_papers_lost(self):
+        original = {"A": [0], "B": [1, 2, 3, 4, 5, 6, 7, 8, 9]}
+        # Only merges A (1 paper), losing 9 of 10 (>50% lost)
+        text = "FINAL: Group\nMERGE: A\n"
+        result = _parse_merged_categories(text, original)
+        assert result is None
+
+    def test_fuzzy_match(self):
+        original = {"Vision-Based Crack Detection": [0, 1]}
+        text = "FINAL: Vision\nMERGE: Vision-Based Crack Detection\n"
+        result = _parse_merged_categories(text, original)
+        assert result is not None
+        assert result["Vision"] == [0, 1]
 
 
 class TestBuildTieredCorpus:
