@@ -48,9 +48,3 @@ class ContextOverflowError(DeepResearcherError):
     """Context window exceeded and recovery failed."""
 
 
-class PhaseError(DeepResearcherError):
-    """A pipeline phase failed but may be recoverable."""
-    def __init__(self, phase: str, reason: str, recoverable: bool = True) -> None:
-        self.phase = phase
-        self.recoverable = recoverable
-        super().__init__(f"Phase '{phase}' failed: {reason}")

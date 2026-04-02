@@ -10,7 +10,7 @@ from __future__ import annotations
 import copy
 import logging
 import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 
 import httpx
 
@@ -46,25 +46,29 @@ class EnrichmentTool(Tool):
             return ToolResult(text="No papers to enrich", papers=[])
 
         email = email or "deep-researcher@example.com"
-        enriched_papers: list[Paper] = []
         enriched_count = 0
 
+        # Preserve input order: collect results by index (Issue 2 fix)
+        results_by_index: list[Paper] = [copy.deepcopy(p) for p in papers]
+
         with ThreadPoolExecutor(max_workers=min(len(papers), MAX_TOOL_CONCURRENCY)) as pool:
-            futures = {
-                pool.submit(self._enrich_one, paper, email): paper
-                for paper in papers
+            future_to_idx: dict[Future, int] = {
+                pool.submit(self._enrich_one, paper, email): i
+                for i, paper in enumerate(papers)
             }
-            for future in as_completed(futures):
+            for future in as_completed(future_to_idx):
                 if cancel and cancel.is_set():
                     break
-                original = futures[future]
+                idx = future_to_idx[future]
                 try:
                     result_paper = future.result()
-                    enriched_papers.append(result_paper)
-                    if result_paper.doi and result_paper.doi != original.doi:
+                    results_by_index[idx] = result_paper
+                    if result_paper.doi and result_paper.doi != papers[idx].doi:
                         enriched_count += 1
                 except Exception:
-                    enriched_papers.append(copy.copy(original))
+                    pass  # keep the deepcopy fallback already in place
+
+        enriched_papers = results_by_index
 
         has_abstract = sum(1 for p in enriched_papers if p.abstract and len(p.abstract) > 200)
         has_doi = sum(1 for p in enriched_papers if p.doi)
@@ -75,7 +79,7 @@ class EnrichmentTool(Tool):
 
     def _enrich_one(self, paper: Paper, email: str) -> Paper:
         """Enrich a single paper. Returns a new Paper (never mutates input)."""
-        result = copy.copy(paper)
+        result = copy.deepcopy(paper)
         ua_openalex = {"User-Agent": f"mailto:{email}"}
         ua_crossref = {"User-Agent": f"deep-researcher (mailto:{email})"}
 

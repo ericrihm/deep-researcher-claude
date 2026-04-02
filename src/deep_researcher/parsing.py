@@ -187,8 +187,3 @@ def titles_match(title_a: str, title_b: str) -> bool:
     overlap = len(words_a & words_b)
     smaller = min(len(words_a), len(words_b))
     return overlap / smaller >= 0.5
-
-
-def truncate(s: str, n: int) -> str:
-    s = s.replace("\n", " ").strip()
-    return s[:n] + "..." if len(s) > n else s

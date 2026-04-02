@@ -34,7 +34,7 @@ class TestOrchestrator:
     def test_search_phase_returns_papers(self):
         orch = self._make_orchestrator()
         papers = [Paper(title="Paper A"), Paper(title="Paper B")]
-        orch._search_tool.execute.return_value = ToolResult(text="Found 2", papers=papers)
+        orch._search_tool.safe_execute.return_value = ToolResult(text="Found 2", papers=papers)
         state = PipelineState(query="test")
         new_state = orch._run_search(state)
         assert len(new_state.papers) == 2
@@ -43,21 +43,21 @@ class TestOrchestrator:
         orch = self._make_orchestrator()
         papers = {"k1": Paper(title="Paper A"), "k2": Paper(title="Paper B")}
         enriched = [Paper(title="Paper A", doi="10.1/a"), Paper(title="Paper B", doi="10.1/b")]
-        orch._enrichment_tool.execute.return_value = ToolResult(text="Enriched", papers=enriched)
+        orch._enrichment_tool.safe_execute.return_value = ToolResult(text="Enriched", papers=enriched)
         state = PipelineState(query="test", papers=papers)
         new_state = orch._run_enrichment(state)
         assert all(p.doi for p in new_state.papers.values())
 
     def test_search_failure_returns_empty_state(self):
         orch = self._make_orchestrator()
-        orch._search_tool.execute.return_value = ToolResult(text="Found 0", papers=[])
+        orch._search_tool.safe_execute.return_value = ToolResult(text="Found 0", papers=[])
         state = PipelineState(query="test")
         new_state = orch._run_search(state)
         assert len(new_state.papers) == 0
 
     def test_synthesis_fallback_on_categorization_failure(self):
         orch = self._make_orchestrator()
-        orch._categorize_tool.execute.return_value = ToolResult(text="Failed", data=None)
+        orch._categorize_tool.safe_execute.return_value = ToolResult(text="Failed", data=None)
         orch.llm.chat_no_think.return_value = "Fallback synthesis content"
         papers = [Paper(title=f"P{i}", citation_count=10 - i) for i in range(5)]
         state = PipelineState(
@@ -71,7 +71,7 @@ class TestOrchestrator:
     def test_state_immutability(self):
         orch = self._make_orchestrator()
         papers = [Paper(title="Paper A")]
-        orch._search_tool.execute.return_value = ToolResult(text="Found 1", papers=papers)
+        orch._search_tool.safe_execute.return_value = ToolResult(text="Found 1", papers=papers)
         state = PipelineState(query="test")
         original_papers = state.papers
         new_state = orch._run_search(state)
