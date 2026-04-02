@@ -9,8 +9,6 @@ CHARS_PER_TOKEN = 4  # Rough approximation for English text
 # --- Google Scholar search ---
 SCHOLAR_MAX_RESULTS = 100          # Max papers to fetch from Google Scholar
 
-# --- Journal quality filter ---
-MIN_JOURNAL_H_INDEX = 50           # Minimum journal h-index to keep (roughly Q1-Q2 journals)
 
 # --- Synthesis phase ---
 MAX_SYNTHESIS_PAPERS = 200          # Cap on papers sent to synthesis
