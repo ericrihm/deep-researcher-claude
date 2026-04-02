@@ -5,10 +5,12 @@ from deep_researcher.llm import LLMClient
 from deep_researcher.tools.arxiv_search import ArxivSearchTool
 from deep_researcher.tools.base import ToolRegistry
 from deep_researcher.tools.categorize import CategorizeTool
+from deep_researcher.tools.clarify import ClarifyTool
 from deep_researcher.tools.core_search import CoreSearchTool
 from deep_researcher.tools.cross_analysis import CrossAnalysisTool
 from deep_researcher.tools.crossref import CrossrefSearchTool
 from deep_researcher.tools.enrichment import EnrichmentTool
+from deep_researcher.tools.fallback_synthesis import FallbackSynthesisTool
 from deep_researcher.tools.ieee_xplore import IEEEXploreSearchTool
 from deep_researcher.tools.open_access import OpenAccessTool
 from deep_researcher.tools.openalex import OpenAlexSearchTool
@@ -26,9 +28,11 @@ def build_tool_registry(config: Config, llm: LLMClient | None = None) -> ToolReg
     registry.register(ScholarSearchTool())
     registry.register(EnrichmentTool())
     if llm:
+        registry.register(ClarifyTool(llm=llm))
         registry.register(CategorizeTool(llm=llm))
         registry.register(SynthesisTool(llm=llm))
         registry.register(CrossAnalysisTool(llm=llm))
+        registry.register(FallbackSynthesisTool(llm=llm))
 
     # Database tools
     database_tools = [

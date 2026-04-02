@@ -58,7 +58,8 @@ class TestOrchestrator:
     def test_synthesis_fallback_on_categorization_failure(self):
         orch = self._make_orchestrator()
         orch._categorize_tool.safe_execute.return_value = ToolResult(text="Failed", data=None)
-        orch.llm.chat_no_think.return_value = "Fallback synthesis content"
+        orch._fallback_tool = MagicMock()
+        orch._fallback_tool.safe_execute.return_value = ToolResult(text="Fallback synthesis content")
         papers = [Paper(title=f"P{i}", citation_count=10 - i) for i in range(5)]
         state = PipelineState(
             query="test",
@@ -79,7 +80,7 @@ class TestOrchestrator:
         assert len(new_state.papers) == 1
 
     def test_assemble_report_format(self):
-        orch = self._make_orchestrator()
+        from deep_researcher.orchestrator import _assemble_report
         papers = [
             Paper(title="Paper A", authors=["Alice"], year=2023, doi="10.1/a"),
             Paper(title="Paper B", authors=["Bob", "Carol"], year=2024),
@@ -92,7 +93,7 @@ class TestOrchestrator:
             category_sections=[("Group A", "Section content here")],
             cross_section="Cross patterns here",
         )
-        report = orch._assemble_report(state)
+        report = _assemble_report(state)
         assert "### test query" in report
         assert "#### Coverage" in report
         assert "##### Group A" in report
