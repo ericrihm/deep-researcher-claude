@@ -84,9 +84,24 @@ class ToolRegistry:
             return ToolResult(text=f"Error: Unknown tool '{name}'")
         try:
             kwargs = json.loads(arguments) if arguments else {}
-            return tool.execute(**kwargs)
         except json.JSONDecodeError:
             return ToolResult(text=f"Error: Invalid JSON arguments for tool '{name}'")
+        try:
+            # Validate required parameters
+            required = tool.parameters.get("required", [])
+            missing = [r for r in required if r not in kwargs]
+            if missing:
+                return ToolResult(text=f"Error: Missing required parameters for '{name}': {', '.join(missing)}")
+
+            # Clamp max_results to reasonable bounds
+            if "max_results" in kwargs:
+                val = kwargs["max_results"]
+                if not isinstance(val, int) or val < 1:
+                    kwargs["max_results"] = 10
+                elif val > 100:
+                    kwargs["max_results"] = 100
+
+            return tool.execute(**kwargs)
         except Exception as e:
             logger.exception("Tool %s failed", name)
             return ToolResult(text=f"Error executing {name}: {e}")
