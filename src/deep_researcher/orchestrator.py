@@ -155,7 +155,7 @@ class Orchestrator:
 
     def _run_search(self, state: PipelineState) -> PipelineState:
         """Phase 1: Search Google Scholar via tool."""
-        result = self._search_tool.execute(
+        result = self._search_tool.safe_execute(
             query=state.query,
             cancel=self._cancel,
         )
@@ -170,7 +170,7 @@ class Orchestrator:
 
     def _run_enrichment(self, state: PipelineState) -> PipelineState:
         """Phase 2: Enrich papers via tool (concurrent HTTP)."""
-        result = self._enrichment_tool.execute(
+        result = self._enrichment_tool.safe_execute(
             papers=list(state.papers.values()),
             email=self.config.email,
             cancel=self._cancel,
@@ -214,7 +214,7 @@ class Orchestrator:
 
         # Step 1: Categorize
         self.console.print("  [cyan]Step 1/3: Categorizing papers...[/cyan]")
-        cat_result = self._categorize_tool.execute(
+        cat_result = self._categorize_tool.safe_execute(
             papers=synthesis_papers,
             query=state.query,
         )
@@ -245,7 +245,7 @@ class Orchestrator:
             try:
                 with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                     future = pool.submit(
-                        self._synthesize_tool.execute,
+                        self._synthesize_tool.safe_execute,
                         indexed_papers=cat_indexed,
                         query=state.query,
                         category_name=cat_name,
@@ -269,7 +269,7 @@ class Orchestrator:
 
         # Step 3: Cross-category analysis
         self.console.print("  [cyan]Step 3/3: Cross-category analysis...[/cyan]")
-        cross_result = self._cross_analysis_tool.execute(
+        cross_result = self._cross_analysis_tool.safe_execute(
             sections=category_sections,
             query=state.query,
         )

@@ -3,7 +3,8 @@ from __future__ import annotations
 import hashlib
 import html
 import re
-from dataclasses import dataclass, field
+import copy
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 
@@ -175,18 +176,22 @@ class PipelineState:
     report: str = ""
 
     def evolve(self, **kwargs: Any) -> PipelineState:
-        """Return a new PipelineState with specified fields replaced."""
-        current = {
-            "query": self.query,
-            "papers": self.papers,
-            "categories": self.categories,
-            "synthesis_papers": self.synthesis_papers,
-            "category_sections": self.category_sections,
-            "cross_section": self.cross_section,
-            "report": self.report,
-        }
-        current.update(kwargs)
-        return PipelineState(**current)
+        """Return a new PipelineState with specified fields replaced.
+
+        Non-overridden mutable fields are shallow-copied to prevent
+        accidental cross-state mutation.
+        """
+        # Deep-copy mutable fields that aren't being replaced
+        defaults: dict[str, Any] = {}
+        if "papers" not in kwargs:
+            defaults["papers"] = copy.copy(self.papers)
+        if "synthesis_papers" not in kwargs:
+            defaults["synthesis_papers"] = list(self.synthesis_papers)
+        if "category_sections" not in kwargs:
+            defaults["category_sections"] = list(self.category_sections)
+        if "categories" not in kwargs and self.categories is not None:
+            defaults["categories"] = {k: list(v) for k, v in self.categories.items()}
+        return replace(self, **defaults, **kwargs)
 
 
 def clean_abstract(text: str | None) -> str | None:
