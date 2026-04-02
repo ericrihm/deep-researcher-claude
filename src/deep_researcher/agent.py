@@ -529,7 +529,7 @@ class ResearchAgent:
 
     def research(self, query: str) -> str:
         self.console.print(Panel(
-            f"[bold]{query}[/bold]\n[dim]breadth={self.config.breadth}  depth={self.config.depth}  max_iter={self.config.max_iterations}[/dim]",
+            f"[bold]{query}[/bold]\n[dim]breadth={self.config.breadth}  max_iter={self.config.max_iterations}[/dim]",
             title="Deep Researcher",
             border_style="blue",
         ))
@@ -545,12 +545,9 @@ class ResearchAgent:
         self._systematic_search(query)
 
         # === PHASE 2: LLM-driven search (short — gaps only, sweep already covered main space) ===
-        _LLM_SEARCH_ITERS = min(LLM_SEARCH_ITERATIONS, self.config.max_iterations)
-        saved_max = self.config.max_iterations
-        self.config.max_iterations = _LLM_SEARCH_ITERS
-        self.console.print(f"\n[bold blue]Phase 2: LLM gap-fill search ({len(self.papers)} papers, max {_LLM_SEARCH_ITERS} iterations)...[/bold blue]")
-        self._search_phase(query)
-        self.config.max_iterations = saved_max
+        llm_iterations = min(LLM_SEARCH_ITERATIONS, self.config.max_iterations)
+        self.console.print(f"\n[bold blue]Phase 2: LLM gap-fill search ({len(self.papers)} papers, max {llm_iterations} iterations)...[/bold blue]")
+        self._search_phase(query, max_iterations=llm_iterations)
 
         # === PHASE 3: Synthesize (categorize + analyze) ===
         self.console.print(f"\n[bold blue]Phase 3: Synthesizing {len(self.papers)} papers...[/bold blue]")
@@ -560,7 +557,7 @@ class ResearchAgent:
         self._save(query, report)
         return report
 
-    def _search_phase(self, query: str) -> None:
+    def _search_phase(self, query: str, max_iterations: int) -> None:
         """Run the agentic search loop to collect papers."""
         search_prompt = _build_search_prompt(self.config)
 
@@ -581,8 +578,8 @@ class ResearchAgent:
         tool_schemas = self.registry.schemas()
         compact_failures = 0  # Circuit breaker (Claude Code pattern)
 
-        for iteration in range(1, self.config.max_iterations + 1):
-            self.console.print(f"\n[dim]--- Search {iteration}/{self.config.max_iterations} | {len(self.papers)} papers | {len(self._databases_used)} databases ---[/dim]")
+        for iteration in range(1, max_iterations + 1):
+            self.console.print(f"\n[dim]--- Search {iteration}/{max_iterations} | {len(self.papers)} papers | {len(self._databases_used)} databases ---[/dim]")
 
             messages = _compact_messages(messages, LLMClient.estimate_tokens)
 
@@ -652,7 +649,7 @@ class ResearchAgent:
             self.console.print(f"  [yellow]Total: {len(self.papers)} unique papers{new_label} from {len(self._databases_used)} databases{rejected_label}[/yellow]")
 
             # Inject reflection prompt (adapts strategy: broad → focused → gap-filling)
-            progress = iteration / self.config.max_iterations
+            progress = iteration / max_iterations
             if progress < 0.35:
                 phase_hint = (
                     "You're in the BROAD EXPLORATION phase. Cast a wide net — use different databases, "
@@ -694,7 +691,7 @@ class ResearchAgent:
                     pass  # Non-critical — don't break the search loop
         else:
             # Loop completed without LLM stopping (hit max iterations)
-            self.console.print(f"\n[yellow]Reached iteration limit ({self.config.max_iterations}). Proceeding to synthesis with {len(self.papers)} papers.[/yellow]")
+            self.console.print(f"\n[yellow]Reached iteration limit ({max_iterations}). Proceeding to synthesis with {len(self.papers)} papers.[/yellow]")
 
     def _synthesis_phase(self, query: str) -> str:
         """Multi-step synthesis (STORM-inspired + Claude Code token budgeting).

@@ -36,12 +36,16 @@ def main() -> None:
     parser.add_argument("--output", default=None, help="Output directory (default: ./output)")
     parser.add_argument("--email", default=None, help="Email for polite API access to OpenAlex/CrossRef/Unpaywall")
     parser.add_argument("--breadth", type=int, default=None, help="Search breadth: query variations (1-5, default: 3)")
-    parser.add_argument("--depth", type=int, default=None, help="Search depth: citation rounds (0-5, default: 2)")
     parser.add_argument("--start-year", type=int, default=None, help="Filter papers published on or after this year")
     parser.add_argument("--end-year", type=int, default=None, help="Filter papers published on or before this year")
     parser.add_argument("--interactive", action="store_true", help="Ask clarifying questions before researching")
+    parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
     parser.add_argument("--version", action="version", version=f"deep-researcher {__version__}")
     args = parser.parse_args()
+
+    if args.verbose:
+        import logging
+        logging.basicConfig(level=logging.DEBUG, format="%(name)s %(levelname)s: %(message)s")
 
     console = Console()
 
@@ -85,8 +89,6 @@ def main() -> None:
         config.email = args.email
     if args.breadth is not None:
         config.breadth = max(1, min(args.breadth, 5))
-    if args.depth is not None:
-        config.depth = max(0, min(args.depth, 5))
     if args.start_year is not None:
         config.start_year = args.start_year
     if args.end_year is not None:
@@ -102,7 +104,7 @@ def main() -> None:
             sys.exit(1)
 
     console.print(f"[dim]Model: {config.model} @ {config.base_url}[/dim]")
-    settings_parts = [f"breadth={config.breadth}", f"depth={config.depth}", f"max_iter={config.max_iterations}"]
+    settings_parts = [f"breadth={config.breadth}", f"max_iter={config.max_iterations}"]
     if config.start_year is not None or config.end_year is not None:
         yr_range = f"{config.start_year if config.start_year is not None else '...'}-{config.end_year if config.end_year is not None else '...'}"
         settings_parts.append(f"years={yr_range}")
