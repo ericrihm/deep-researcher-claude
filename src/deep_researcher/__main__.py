@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import signal
 import sys
 
 from rich.console import Console
@@ -114,6 +115,10 @@ def main() -> None:
     query = args.query
     if config.interactive:
         query = agent.clarify(query)
+    def _on_interrupt(signum, frame):
+        agent.cancel()
+
+    prev_handler = signal.signal(signal.SIGINT, _on_interrupt)
     try:
         report = agent.research(query)
         if report:
@@ -129,6 +134,8 @@ def main() -> None:
             console.print(f"[yellow]Saving {len(agent.papers)} papers collected so far...[/yellow]")
             agent._save(query, "# Research Interrupted\n\nPartial results: research was interrupted before synthesis.")
         sys.exit(1)
+    finally:
+        signal.signal(signal.SIGINT, prev_handler)
 
 
 if __name__ == "__main__":
