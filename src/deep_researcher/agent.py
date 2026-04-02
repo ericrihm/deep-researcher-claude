@@ -17,7 +17,6 @@ from deep_researcher.constants import (
     MAX_FINAL_CATEGORIES,
     MAX_SYNTHESIS_PAPERS,
     MIN_CATEGORIZATION_COVERAGE,
-    MIN_JOURNAL_H_INDEX,
     SCHOLAR_MAX_RESULTS,
 )
 from deep_researcher.llm import LLMClient
@@ -169,7 +168,6 @@ class ResearchAgent:
         self.console = Console()
         self._output_folder: str = ""
         self._cancel = threading.Event()
-        self._journal_h_index: dict[str, int] = {}  # journal_name -> h_index (from OpenAlex)
 
     def cancel(self) -> None:
         """Signal the agent to stop gracefully."""
@@ -230,9 +228,6 @@ class ResearchAgent:
         # === Phase 2: Enrich via OpenAlex + CrossRef ===
         self.console.print(f"\n[bold blue]Phase 2: Enriching {len(self.papers)} papers...[/bold blue]")
         self._enrich_papers()
-
-        # === Phase 2b: Filter by journal quality ===
-        self._filter_by_journal_quality()
 
         # Checkpoint
         if self.papers and self._output_folder:
@@ -379,10 +374,6 @@ class ResearchAgent:
         source = (work.get("primary_location") or {}).get("source") or {}
         if source.get("display_name"):
             paper.journal = source["display_name"]
-            # Track journal h-index for quality filtering
-            h_index = (source.get("summary_stats") or {}).get("h_index")
-            if h_index is not None:
-                self._journal_h_index[source["display_name"]] = h_index
 
         oa = work.get("open_access", {})
         if oa.get("oa_url"):
@@ -391,45 +382,6 @@ class ResearchAgent:
         oa_cites = work.get("cited_by_count", 0)
         if oa_cites and (paper.citation_count is None or oa_cites > paper.citation_count):
             paper.citation_count = oa_cites
-
-    # ------------------------------------------------------------------
-    # Phase 2b: Journal quality filter
-    # ------------------------------------------------------------------
-
-    def _filter_by_journal_quality(self) -> None:
-        """Remove papers from low-quality journals based on OpenAlex h-index.
-
-        Keeps papers that:
-        - Come from journals with h-index >= MIN_JOURNAL_H_INDEX
-        - Have no journal info (preprints, conference papers — benefit of the doubt)
-        - Have no h-index data (couldn't be looked up — benefit of the doubt)
-        - Are highly cited themselves (>20 citations — quality signal regardless of venue)
-        """
-        if not self._journal_h_index:
-            return  # No h-index data collected during enrichment
-
-        to_remove = []
-        for key, paper in self.papers.items():
-            journal = paper.journal
-            if not journal:
-                continue  # No journal info — keep
-            h_index = self._journal_h_index.get(journal)
-            if h_index is None:
-                continue  # No h-index data — keep
-            if h_index >= MIN_JOURNAL_H_INDEX:
-                continue  # Good journal — keep
-            if (paper.citation_count or 0) > 20:
-                continue  # Highly cited paper — keep regardless of venue
-            to_remove.append((key, paper.title, journal, h_index))
-
-        if to_remove:
-            for key, title, journal, h_index in to_remove:
-                del self.papers[key]
-                logger.debug("Filtered: '%s' (journal '%s', h-index=%d)", title[:50], journal, h_index)
-            self.console.print(
-                f"  [yellow]Filtered {len(to_remove)} papers from low-quality journals "
-                f"(h-index < {MIN_JOURNAL_H_INDEX}). {len(self.papers)} papers remaining.[/yellow]"
-            )
 
     # ------------------------------------------------------------------
     # Phase 3: Multi-step synthesis
