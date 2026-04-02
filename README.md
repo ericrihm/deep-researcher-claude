@@ -10,7 +10,7 @@
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10+-blue.svg?style=flat-square" alt="Python 3.10+"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg?style=flat-square" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/dependencies-4-brightgreen.svg?style=flat-square" alt="Dependencies: 4">
-  <img src="https://img.shields.io/badge/version-0.3.0-blue.svg?style=flat-square" alt="Version: 0.3.0">
+  <img src="https://img.shields.io/badge/version-0.4.0-blue.svg?style=flat-square" alt="Version: 0.4.0">
 </p>
 
 <p align="center">
@@ -420,41 +420,55 @@ Priority: CLI args > environment variables > config file > defaults.
 
 ## Architecture
 
-Deep Researcher was built by studying **Claude Code's source code** (Anthropic's CLI for Claude). Key patterns adopted:
+Deep Researcher v0.4 was built by studying **Claude Code's source code** (Anthropic's CLI for Claude) and applying its 7 agentic framework principles:
 
-| Pattern | Claude Code | Deep Researcher |
+| Principle | Claude Code | Deep Researcher |
 |---|---|---|
-| Custom error types | `utils/errors.ts` | `errors.py` with structured context |
-| Centralized constants | `query/config.ts` | `constants.py` — all thresholds in one place |
-| Immutable config | Config snapshot per query | Config never mutated during execution |
-| Partitioned execution | `toolOrchestration.ts` | `execute_partitioned()` — read-only tools concurrent |
-| Graceful cancellation | `AbortController` | `threading.Event` + SIGINT handler |
-| Context compression | `autoCompact` | Token-budgeted tiered corpus |
+| Tools as unit of action | Every interaction is a `Tool` with `call()`, `validateInput()` | 7 pipeline tools with `execute()`, `validate_input()`, `safe_execute()` |
+| Orchestration separate from execution | `query.ts` only dispatches tools | `orchestrator.py` makes zero raw API calls — only `safe_execute()` |
+| Immutable state flow | Messages never mutated, `contextModifier` returns new context | `PipelineState.evolve()` returns new state each phase |
+| Layered error recovery | `withRetry` → model fallback → context compact → tool errors | API retry → `safe_execute()` wrapping → per-category skip → fallback synthesis |
+| Validation at boundaries | Zod schemas on every tool input | `validate_input()` called on every `safe_execute()` path |
+| Declarative concurrency | `isConcurrencySafe()` per tool, `StreamingToolExecutor` | `is_read_only` per tool, `EnrichmentTool` uses `ThreadPoolExecutor` |
+| Physical separation | Each tool in its own file, orchestration/execution/permissions separate | Each module has one responsibility, 12 source files |
 
 ### Project Structure
 
 ```
 src/deep_researcher/
   __main__.py          # CLI entry point + provider presets
-  agent.py             # Google Scholar search → OpenAlex enrichment → multi-step synthesis
+  orchestrator.py      # Pipeline loop — calls tools only, manages state flow
+  prompts.py           # All LLM prompt templates
+  parsing.py           # LLM output parsing utilities
+  display.py           # Display and output helpers (separated from orchestration)
   llm.py               # OpenAI-compatible client with retry/recovery
   config.py            # Config file + env var + CLI loading with validation
   constants.py         # All tunable thresholds in one place
-  errors.py            # Domain-specific error types
-  models.py            # Paper (with dedup + merge) + ToolResult
+  errors.py            # Domain-specific error types with structured context
+  models.py            # Paper, PipelineState (immutable state flow), ToolResult
   report.py            # Report + BibTeX + JSON + CSV + checkpoint generation
-  tools/               # Database tools (available but not used in default pipeline)
-    base.py            # Tool base class + registry
-    arxiv_search.py    # arXiv API
-    openalex.py        # OpenAlex API
-    crossref.py        # CrossRef API
-    pubmed.py          # PubMed E-utilities
-    scopus.py          # Scopus (Elsevier) API
-    ieee_xplore.py     # IEEE Xplore API
+  tools/
+    base.py            # Tool base class with validate_input() + safe_execute()
+    scholar_search.py  # Google Scholar search (pipeline Phase 1)
+    enrichment.py      # OpenAlex + CrossRef enrichment with concurrent HTTP (Phase 2)
+    categorize.py      # LLM paper categorization (Phase 3, Step 1)
+    synthesize.py      # Per-category LLM synthesis (Phase 3, Step 2)
+    cross_analysis.py  # Cross-category LLM analysis (Phase 3, Step 3)
+    clarify.py         # Interactive query clarification
+    fallback_synthesis.py  # Single-pass fallback when multi-step fails
+    arxiv_search.py    # arXiv API (database tool)
+    openalex.py        # OpenAlex API (database tool)
+    crossref.py        # CrossRef API (database tool)
+    pubmed.py          # PubMed E-utilities (database tool)
+    scopus.py          # Scopus API (database tool)
+    ieee_xplore.py     # IEEE Xplore API (database tool)
     ...
 tests/
-  test_models.py       # Paper dedup, merge, BibTeX
-  test_agent.py        # Parsing, corpus building, input validation
+  test_models.py       # Paper dedup, merge, BibTeX, PipelineState
+  test_parsing.py      # Category parsing, corpus building, title matching
+  test_pipeline_tools.py  # All 7 pipeline tools with mocked dependencies
+  test_orchestrator.py # Pipeline phases, state flow, fallback paths
+  test_tool_base.py    # Tool validation, safe_execute, registry
   test_config.py       # Config validation
 ```
 
