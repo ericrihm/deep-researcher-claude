@@ -90,39 +90,38 @@ This section covers the category: **{category}** ({count} papers)
 ## Papers in this category
 {corpus}
 
-## Write this section with DETAILED analysis. Reference papers by [number] throughout.
+## Write this section. Reference papers by [number].
 
 **What this group does:**
-Write a detailed paragraph (4-6 sentences) explaining the shared approach/theme.
-Reference individual papers: e.g., "Smith et al. [1] introduced X. Jones et al. [2] extended this by Y.
-Lee et al. [3] proposed a different approach using Z." Include specific contributions from each paper.
+Write a paragraph (4-6 sentences) explaining the shared approach/theme.
+Reference individual papers: e.g., "Smith et al. [1] introduced X. Jones et al. [2] extended this by Y."
 
 **Key methods:**
-Write a detailed paragraph describing the specific methods and techniques.
-For each method, cite which paper(s) used it: e.g., "Neural semantic parsing [1], domain-specific
-fine-tuning on regulatory corpora [3], hybrid NLP-BIM integration [4]. Smith et al. [1] used
-first-order logic transformation, while Jones et al. [2] employed prompt engineering with chain-of-thought."
+Write a paragraph describing the specific methods and techniques.
+For each method, cite which paper(s) used it.
 
 **Main findings:**
-Write a detailed paragraph on collective findings. Include specific results where available:
-e.g., "Smith et al. [1] reported 92% accuracy on structured clauses but only 67% on conditional ones.
-Jones et al. [2] found that fine-tuning outperformed zero-shot by 23%." Note agreements and disagreements.
+Write a paragraph on collective findings. Include specific results ONLY if the \
+abstract explicitly states them (e.g., accuracy percentages, performance metrics). \
+Do NOT infer, generalize, or fabricate results that are not in the abstracts.
 
-**Limitations:**
-Write a paragraph on common weaknesses, citing specific papers where relevant.
+**Limitations & gaps (your analysis):**
+Write YOUR OWN analysis of common weaknesses and gaps across this group. \
+This is your synthesis — do NOT attribute these observations to specific papers \
+with [number] citations. Instead write: "A common limitation across these studies is..." \
+or "This group does not address..."
 
 | Ref | Paper | Year | Method | Key Finding | Citations |
 |-----|-------|------|--------|-------------|-----------|
 (Include EVERY paper listed above in the table)
 
-Rules:
-- Be DETAILED — this is a literature review, not an abstract
-- Reference papers by [number] throughout ALL sections, not just the table
-- Include specific metrics, results, and comparisons where the abstracts mention them
+## CRITICAL RULES
+- ONLY state what the abstracts explicitly say. If a metric is not in the abstract, do NOT invent it.
+- When citing [N], the claim MUST come from that paper's abstract above. Verify before writing.
+- The Limitations section is YOUR analysis — do NOT fake-attribute observations to papers.
+- Include ALL papers from this category in the table.
 - Be direct. No filler. No "In recent years..."
-- Include ALL papers from this category in the table
-- Do NOT invent papers or results — only use what's in the abstracts above
-- Do NOT write references or cross-category analysis — just this one section
+- Do NOT write references or cross-category analysis — just this one section.
 """
 
 _CROSS_CATEGORY_PROMPT = """\
