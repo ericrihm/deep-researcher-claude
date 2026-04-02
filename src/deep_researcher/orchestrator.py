@@ -1,10 +1,9 @@
 # src/deep_researcher/orchestrator.py
 """Research pipeline orchestrator.
 
-Calls tools through a uniform interface, manages PipelineState flow,
-and provides layered error recovery (claude-code Principles 1-4).
-
-The orchestrator ONLY calls tools — it never makes raw API/library calls.
+Pure orchestration: calls tools, manages PipelineState flow, provides
+layered error recovery. Never makes raw API/library calls (Principle 2).
+Display and persistence are delegated to display.py and report.py.
 """
 from __future__ import annotations
 
@@ -14,23 +13,21 @@ import threading
 
 from rich.console import Console
 from rich.panel import Panel
-from rich.table import Table
 
 from deep_researcher.config import Config
 from deep_researcher.constants import (
     CATEGORY_SYNTHESIS_TIMEOUT,
-    FALLBACK_MAX_PAPERS,
-    FALLBACK_TOKEN_BUDGET,
     MAX_SYNTHESIS_PAPERS,
 )
+from deep_researcher.display import print_summary, save_results
 from deep_researcher.llm import LLMClient
 from deep_researcher.models import Paper, PipelineState
-from deep_researcher.parsing import build_tiered_corpus
-from deep_researcher.prompts import CLARIFY_PROMPT
-from deep_researcher.report import get_output_folder, save_checkpoint, save_report
+from deep_researcher.report import get_output_folder, save_checkpoint
 from deep_researcher.tools.categorize import CategorizeTool
+from deep_researcher.tools.clarify import ClarifyTool
 from deep_researcher.tools.cross_analysis import CrossAnalysisTool
 from deep_researcher.tools.enrichment import EnrichmentTool
+from deep_researcher.tools.fallback_synthesis import FallbackSynthesisTool
 from deep_researcher.tools.scholar_search import ScholarSearchTool
 from deep_researcher.tools.synthesize import SynthesisTool
 
@@ -38,27 +35,29 @@ logger = logging.getLogger("deep_researcher")
 
 
 class Orchestrator:
-    """Pipeline orchestrator — the ONLY place that calls tools.
+    """Pipeline orchestrator — calls tools only, never raw APIs.
 
     Each phase:
-    1. Calls a tool with validated input
+    1. Calls a tool via safe_execute() (validation + error wrapping)
     2. Handles errors with recovery (retry -> fallback -> degrade)
     3. Returns new PipelineState (never mutates input)
     """
 
     def __init__(self, config: Config) -> None:
         self.config = config
-        self.llm = LLMClient(config)
         self.console = Console()
         self._cancel = threading.Event()
         self._output_folder: str = ""
 
-        # Pipeline tools (Principle 1: tools as unit of action)
+        # All tools (Principle 1: tools as unit of action)
+        llm = LLMClient(config)
         self._search_tool = ScholarSearchTool()
         self._enrichment_tool = EnrichmentTool()
-        self._categorize_tool = CategorizeTool(llm=self.llm)
-        self._synthesize_tool = SynthesisTool(llm=self.llm)
-        self._cross_analysis_tool = CrossAnalysisTool(llm=self.llm)
+        self._clarify_tool = ClarifyTool(llm=llm)
+        self._categorize_tool = CategorizeTool(llm=llm)
+        self._synthesize_tool = SynthesisTool(llm=llm)
+        self._cross_analysis_tool = CrossAnalysisTool(llm=llm)
+        self._fallback_tool = FallbackSynthesisTool(llm=llm)
 
     def cancel(self) -> None:
         """Signal the orchestrator to stop gracefully."""
@@ -67,17 +66,11 @@ class Orchestrator:
     def clarify(self, query: str) -> str:
         """Ask clarifying questions and return an enhanced query."""
         self.console.print("\n[bold]Generating clarifying questions...[/bold]\n")
-        try:
-            response = self.llm.chat([
-                {"role": "system", "content": CLARIFY_PROMPT},
-                {"role": "user", "content": query},
-            ])
-            questions = (response.content or "").strip()
-        except Exception as e:
-            self.console.print(f"[yellow]Could not generate questions: {e}. Proceeding with original query.[/yellow]")
-            return query
+        result = self._clarify_tool.safe_execute(query=query)
+        questions = result.text.strip()
 
         if not questions:
+            self.console.print("[yellow]Could not generate questions. Proceeding with original query.[/yellow]")
             return query
 
         self.console.print(questions)
@@ -145,8 +138,8 @@ class Orchestrator:
         self.console.print(f"\n[bold blue]Phase 3: Synthesizing {len(state.papers)} papers...[/bold blue]")
         state = self._run_synthesis(state)
 
-        self._print_summary(state)
-        self._save(state)
+        print_summary(self.console, state)
+        save_results(self.console, state, self.config.output_dir, self._output_folder or None)
         return state.report
 
     # ------------------------------------------------------------------
@@ -193,9 +186,9 @@ class Orchestrator:
         """Phase 3: Multi-step synthesis with layered error recovery.
 
         Recovery layers (Principle 4):
-        1. Per-category retry -> skip on failure
-        2. Categorization failure -> fallback synthesis
-        3. All categories fail -> fallback synthesis
+        1. Per-category timeout/skip
+        2. Categorization failure -> fallback tool
+        3. All categories fail -> fallback tool
         """
         def _sort_key(p: Paper) -> tuple:
             return (-(p.citation_count or 0), -(p.year or 0))
@@ -213,7 +206,7 @@ class Orchestrator:
 
         state = state.evolve(synthesis_papers=synthesis_papers)
 
-        # Step 1: Categorize
+        # Step 1: Categorize (via tool)
         self.console.print("  [cyan]Step 1/3: Categorizing papers...[/cyan]")
         cat_result = self._categorize_tool.safe_execute(
             papers=synthesis_papers,
@@ -223,15 +216,15 @@ class Orchestrator:
 
         if not categories:
             self.console.print("  [yellow]Categorization failed — falling back to single-pass synthesis[/yellow]")
-            report = self._fallback_synthesis(state.query, synthesis_papers)
-            return state.evolve(report=report)
+            fb_result = self._fallback_tool.safe_execute(papers=synthesis_papers, query=state.query)
+            return state.evolve(report=fb_result.text)
 
         state = state.evolve(categories=categories)
         self.console.print(f"  [green]Found {len(categories)} categories[/green]")
         for name, indices in categories.items():
             self.console.print(f"    {name}: {len(indices)} papers")
 
-        # Step 2: Per-category synthesis
+        # Step 2: Per-category synthesis (via tool, with timeout)
         self.console.print("  [cyan]Step 2/3: Synthesizing per category...[/cyan]")
         category_sections: list[tuple[str, str]] = []
         for cat_name, paper_indices in categories.items():
@@ -263,12 +256,12 @@ class Orchestrator:
 
         if not category_sections:
             self.console.print("  [yellow]All categories failed — falling back[/yellow]")
-            report = self._fallback_synthesis(state.query, synthesis_papers)
-            return state.evolve(report=report)
+            fb_result = self._fallback_tool.safe_execute(papers=synthesis_papers, query=state.query)
+            return state.evolve(report=fb_result.text)
 
         state = state.evolve(category_sections=category_sections)
 
-        # Step 3: Cross-category analysis
+        # Step 3: Cross-category analysis (via tool)
         self.console.print("  [cyan]Step 3/3: Cross-category analysis...[/cyan]")
         cross_result = self._cross_analysis_tool.safe_execute(
             sections=category_sections,
@@ -277,110 +270,53 @@ class Orchestrator:
         state = state.evolve(cross_section=cross_result.text)
 
         # Step 4: Assemble report (programmatic — not LLM)
-        report = self._assemble_report(state)
+        report = _assemble_report(state)
         return state.evolve(report=report)
 
-    # ------------------------------------------------------------------
-    # Report assembly (programmatic — never LLM-generated)
-    # ------------------------------------------------------------------
 
-    def _assemble_report(self, state: PipelineState) -> str:
-        """Assemble the final report programmatically."""
-        papers = state.synthesis_papers
-        categories = state.categories or {}
-        sections = state.category_sections
-        cross_section = state.cross_section
+# ------------------------------------------------------------------
+# Report assembly (pure function, no side effects)
+# ------------------------------------------------------------------
 
-        years = [p.year for p in papers if p.year]
-        yr_range = f"{min(years)}-{max(years)}" if years else "unknown"
-        total = len(state.papers)
+def _assemble_report(state: PipelineState) -> str:
+    """Assemble the final report programmatically."""
+    papers = state.synthesis_papers
+    categories = state.categories or {}
+    sections = state.category_sections
+    cross_section = state.cross_section
 
-        has_doi = sum(1 for p in papers if p.doi)
-        parts = [
-            f"### {state.query}\n",
-            f"#### Coverage",
-            f"{total} papers found via Google Scholar, enriched via OpenAlex. "
-            f"Years {yr_range}. {has_doi} with DOIs.\n",
-            "#### Categories\n",
-        ]
+    years = [p.year for p in papers if p.year]
+    yr_range = f"{min(years)}-{max(years)}" if years else "unknown"
+    total = len(state.papers)
 
-        for cat_name, content in sections:
-            cat_indices = categories.get(cat_name, [])
-            parts.append(f"##### {cat_name} ({len(cat_indices)} papers)\n")
-            parts.append(content)
-            parts.append("")
+    has_doi = sum(1 for p in papers if p.doi)
+    parts = [
+        f"### {state.query}\n",
+        f"#### Coverage",
+        f"{total} papers found via Google Scholar, enriched via OpenAlex. "
+        f"Years {yr_range}. {has_doi} with DOIs.\n",
+        "#### Categories\n",
+    ]
 
-        parts.append(cross_section)
+    for cat_name, content in sections:
+        cat_indices = categories.get(cat_name, [])
+        parts.append(f"##### {cat_name} ({len(cat_indices)} papers)\n")
+        parts.append(content)
         parts.append("")
 
-        # References (generated programmatically — never by LLM)
-        parts.append("#### References\n")
-        for i, p in enumerate(papers, 1):
-            author = p.authors[0] if p.authors else "Unknown"
-            if len(p.authors) > 1:
-                author += " et al."
-            year = p.year or "n.d."
-            journal = f" *{p.journal}*." if p.journal else ""
-            doi = f" DOI: {p.doi}" if p.doi else ""
-            oa = f" [Open Access]({p.open_access_url})" if p.open_access_url else ""
-            parts.append(f"[{i}] {author} ({year}). {p.title}.{journal}{doi}{oa}")
+    parts.append(cross_section)
+    parts.append("")
 
-        return "\n".join(parts)
+    # References (generated programmatically — never by LLM)
+    parts.append("#### References\n")
+    for i, p in enumerate(papers, 1):
+        author = p.authors[0] if p.authors else "Unknown"
+        if len(p.authors) > 1:
+            author += " et al."
+        year = p.year or "n.d."
+        journal = f" *{p.journal}*." if p.journal else ""
+        doi = f" DOI: {p.doi}" if p.doi else ""
+        oa = f" [Open Access]({p.open_access_url})" if p.open_access_url else ""
+        parts.append(f"[{i}] {author} ({year}). {p.title}.{journal}{doi}{oa}")
 
-    def _fallback_synthesis(self, query: str, papers: list[Paper]) -> str:
-        """Single-pass fallback if multi-step synthesis fails (recovery layer 2)."""
-        top_papers = papers[:FALLBACK_MAX_PAPERS]
-        corpus = build_tiered_corpus(
-            list(enumerate(top_papers)),
-            token_budget=FALLBACK_TOKEN_BUDGET,
-        )
-        prompt = (
-            f"Write a brief literature review on \"{query}\" based on these {len(top_papers)} papers. "
-            f"Categorize by theme, include a table per category.\n\n{corpus}"
-        )
-        try:
-            return self.llm.chat_no_think([
-                {"role": "system", "content": prompt},
-                {"role": "user", "content": "Write the review."},
-            ])
-        except Exception as e:
-            return f"Synthesis failed: {e}"
-
-    # ------------------------------------------------------------------
-    # Display & save helpers
-    # ------------------------------------------------------------------
-
-    def _print_summary(self, state: PipelineState) -> None:
-        self.console.print(f"\n[green]Research complete.[/green]")
-        table = Table(title="Research Summary", show_header=False, border_style="green")
-        table.add_row("Papers found", str(len(state.papers)))
-
-        has_doi = sum(1 for p in state.papers.values() if p.doi)
-        table.add_row("With DOIs", f"{has_doi}/{len(state.papers)}")
-
-        has_abstract = sum(1 for p in state.papers.values() if p.abstract and len(p.abstract) > 200)
-        table.add_row("Full abstracts", f"{has_abstract}/{len(state.papers)}")
-
-        years = [p.year for p in state.papers.values() if p.year]
-        if years:
-            table.add_row("Year range", f"{min(years)}-{max(years)}")
-
-        oa_count = sum(1 for p in state.papers.values() if p.open_access_url)
-        if oa_count:
-            table.add_row("Open access", f"{oa_count}/{len(state.papers)}")
-
-        self.console.print(table)
-
-    def _save(self, state: PipelineState) -> None:
-        if not state.report.strip():
-            return
-        try:
-            paths = save_report(
-                state.query, state.report, state.papers,
-                self.config.output_dir, folder=self._output_folder or None,
-            )
-            self.console.print(f"\n[green bold]Files saved:[/green bold]")
-            for label, path in paths.items():
-                self.console.print(f"  {label}: [blue]{path}[/blue]")
-        except Exception as e:
-            self.console.print(f"[red]Error saving report: {e}[/red]")
+    return "\n".join(parts)

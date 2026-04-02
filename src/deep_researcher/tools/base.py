@@ -2,10 +2,8 @@ from __future__ import annotations
 
 import json
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
-from deep_researcher.constants import MAX_TOOL_CONCURRENCY
 from deep_researcher.models import ToolResult
 
 logger = logging.getLogger("deep_researcher")
@@ -116,56 +114,3 @@ class ToolRegistry:
             return ToolResult(text=f"Error: Invalid JSON arguments for tool '{name}'")
         return tool.safe_execute(**kwargs)
 
-    def execute_partitioned(self, tool_calls: list[dict]) -> list[tuple[str, ToolResult]]:
-        """Execute tool calls with Claude Code's partitioning pattern.
-
-        Consecutive read-only tools run concurrently in batches.
-        Non-read-only tools run serially, blocking the queue.
-        This prevents concurrent writes while maximizing read throughput.
-        """
-        # Partition into batches (Claude Code partitionToolCalls pattern)
-        batches: list[tuple[bool, list[dict]]] = []
-        for tc in tool_calls:
-            tool = self._tools.get(tc["name"])
-            is_safe = tool.is_read_only if tool else False
-
-            if batches and is_safe and batches[-1][0]:
-                # Extend current concurrent batch
-                batches[-1][1].append(tc)
-            else:
-                batches.append((is_safe, [tc]))
-
-        # Execute batches
-        results: list[tuple[str, ToolResult]] = []
-        for is_concurrent, batch in batches:
-            if is_concurrent and len(batch) > 1:
-                # Run read-only tools concurrently
-                batch_results = self._run_concurrent(batch)
-                results.extend(batch_results)
-            else:
-                # Run serially
-                for tc in batch:
-                    result = self.execute(tc["name"], tc["arguments"])
-                    results.append((tc["id"], result))
-
-        return results
-
-    def _run_concurrent(self, tool_calls: list[dict]) -> list[tuple[str, ToolResult]]:
-        """Run multiple tool calls concurrently via ThreadPoolExecutor."""
-        results: list[tuple[str, ToolResult]] = [("", ToolResult(text="")) for _ in tool_calls]
-
-        with ThreadPoolExecutor(max_workers=min(len(tool_calls), MAX_TOOL_CONCURRENCY)) as executor:
-            futures = {}
-            for i, tc in enumerate(tool_calls):
-                future = executor.submit(self.execute, tc["name"], tc["arguments"])
-                futures[future] = (i, tc["id"])
-
-            for future in as_completed(futures):
-                idx, call_id = futures[future]
-                try:
-                    result = future.result()
-                except Exception as e:
-                    result = ToolResult(text=f"Error: {e}")
-                results[idx] = (call_id, result)
-
-        return results
