@@ -502,11 +502,14 @@ class ResearchAgent:
                 # Search all databases CONCURRENTLY for this combination
                 with ThreadPoolExecutor(max_workers=len(search_tools)) as pool:
                     futures = {pool.submit(_search_one, t, search_query): t for t in search_tools}
+                    batch_papers: list[Paper] = []
                     for future in as_completed(futures):
                         result = future.result()
                         if result:
-                            for paper in result.papers:
-                                self._track_paper(paper, query)
+                            batch_papers.extend(result.papers)
+                # Merge on main thread (after executor context exits)
+                for paper in batch_papers:
+                    self._track_paper(paper, query)
 
                 new_papers = len(self.papers) - papers_before
                 if new_papers > 0:
