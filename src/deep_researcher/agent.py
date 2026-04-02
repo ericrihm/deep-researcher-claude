@@ -319,7 +319,7 @@ class ResearchAgent:
                 )
                 if resp.status_code == 200:
                     results = resp.json().get("results", [])
-                    if results:
+                    if results and _titles_match(paper.title, results[0].get("title", "")):
                         self._apply_openalex(paper, results[0])
                         enriched += 1
                         continue
@@ -333,15 +333,18 @@ class ResearchAgent:
                 if resp.status_code == 200:
                     items = resp.json().get("message", {}).get("items", [])
                     if items and items[0].get("DOI"):
-                        doi = items[0]["DOI"]
-                        resp2 = httpx.get(
-                            f"https://api.openalex.org/works/doi:{doi}",
-                            headers=ua_openalex, timeout=10,
-                        )
-                        if resp2.status_code == 200:
-                            self._apply_openalex(paper, resp2.json())
-                            enriched += 1
-                            continue
+                        # Verify CrossRef result is actually the same paper
+                        cr_title = (items[0].get("title") or [""])[0]
+                        if _titles_match(paper.title, cr_title):
+                            doi = items[0]["DOI"]
+                            resp2 = httpx.get(
+                                f"https://api.openalex.org/works/doi:{doi}",
+                                headers=ua_openalex, timeout=10,
+                            )
+                            if resp2.status_code == 200:
+                                self._apply_openalex(paper, resp2.json())
+                                enriched += 1
+                                continue
             except Exception:
                 logger.debug("Enrichment failed for '%s'", paper.title[:50], exc_info=True)
 
@@ -824,6 +827,29 @@ def _paper_short_entry(idx: int, p) -> str:
     year = p.year or "n.d."
     cites = f", {p.citation_count} cites" if p.citation_count else ""
     return f"[{idx}] {p.title} ({author}, {year}{cites})"
+
+
+def _titles_match(title_a: str, title_b: str) -> bool:
+    """Check if two paper titles refer to the same work.
+
+    Uses word overlap ratio to catch fuzzy matches (different punctuation,
+    truncation, etc.) while rejecting completely different papers that share
+    a few common words like "large language models".
+    """
+    import re as _re
+    words_a = set(_re.findall(r"[a-z0-9]+", title_a.lower()))
+    words_b = set(_re.findall(r"[a-z0-9]+", title_b.lower()))
+    if not words_a or not words_b:
+        return False
+    # Remove very common words that cause false matches
+    stopwords = {"a", "an", "the", "of", "in", "for", "and", "on", "to", "with", "based", "using"}
+    words_a -= stopwords
+    words_b -= stopwords
+    if not words_a or not words_b:
+        return False
+    overlap = len(words_a & words_b)
+    smaller = min(len(words_a), len(words_b))
+    return overlap / smaller >= 0.5
 
 
 def _truncate(s: str, n: int) -> str:
