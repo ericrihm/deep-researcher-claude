@@ -25,6 +25,7 @@ from deep_researcher.report import get_output_folder, save_checkpoint, save_repo
 from deep_researcher.tools import build_tool_registry
 
 import logging
+import threading
 
 logger = logging.getLogger("deep_researcher")
 
@@ -392,6 +393,11 @@ class ResearchAgent:
         self._rejected_count = 0
         self._method_terms: list[str] = []
         self._domain_terms: list[str] = []
+        self._cancel = threading.Event()
+
+    def cancel(self) -> None:
+        """Signal the agent to stop gracefully."""
+        self._cancel.set()
 
     def clarify(self, query: str) -> str:
         """Ask clarifying questions and return an enhanced query."""
@@ -495,6 +501,9 @@ class ResearchAgent:
                 return None
 
         for domain_term in self._domain_terms:
+            if self._cancel.is_set():
+                self.console.print("  [yellow]Cancelled.[/yellow]")
+                return
             for method_term in self._method_terms:
                 combo_count += 1
                 search_query = f"{method_term} {domain_term}"
@@ -583,6 +592,9 @@ class ResearchAgent:
         compact_failures = 0  # Circuit breaker (Claude Code pattern)
 
         for iteration in range(1, max_iterations + 1):
+            if self._cancel.is_set():
+                self.console.print("[yellow]Search cancelled.[/yellow]")
+                break
             self.console.print(f"\n[dim]--- Search {iteration}/{max_iterations} | {len(self.papers)} papers | {len(self._databases_used)} databases ---[/dim]")
 
             messages = _compact_messages(messages, LLMClient.estimate_tokens)
