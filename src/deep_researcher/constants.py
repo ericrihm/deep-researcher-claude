@@ -13,6 +13,7 @@ LLM_SEARCH_ITERATIONS = 3          # LLM gap-fill iterations (after systematic s
 
 # --- Synthesis phase ---
 MAX_SYNTHESIS_PAPERS = 200          # Cap on papers sent to synthesis
+MAX_FINAL_CATEGORIES = 6            # Target number of categories after merging
 CATEGORIZE_BATCH_SIZE = 20          # Papers per categorization LLM call
 CATEGORY_SYNTHESIS_TIMEOUT = 300    # Seconds before skipping a category (5 min)
 CATEGORY_TOKEN_BUDGET = 15_000      # Token budget per category corpus
