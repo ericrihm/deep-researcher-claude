@@ -35,7 +35,6 @@ class Config:
     scopus_api_key: str = ""
     ieee_api_key: str = ""
     breadth: int = 3
-    depth: int = 2
     timeout: int = 500  # ~8 min — local models need time for multi-step synthesis
     start_year: int | None = None
     end_year: int | None = None
@@ -81,5 +80,23 @@ class Config:
                         pass
 
         self.breadth = max(1, min(self.breadth, 5))
-        self.depth = max(0, min(self.depth, 5))
         self.max_iterations = max(1, min(self.max_iterations, 50))
+
+        self.validate()
+
+    def validate(self) -> None:
+        """Validate configuration values (Claude Code boundary-validation pattern)."""
+        from deep_researcher.errors import ConfigValidationError
+
+        if self.start_year is not None and self.end_year is not None:
+            if self.start_year > self.end_year:
+                raise ConfigValidationError("start_year", self.start_year,
+                    f"must be <= end_year ({self.end_year})")
+        if self.start_year is not None and self.start_year < 1900:
+            raise ConfigValidationError("start_year", self.start_year, "must be >= 1900")
+        if self.end_year is not None and self.end_year > 2100:
+            raise ConfigValidationError("end_year", self.end_year, "must be <= 2100")
+        if self.max_iterations < 1:
+            raise ConfigValidationError("max_iterations", self.max_iterations, "must be >= 1")
+        if self.timeout < 1:
+            raise ConfigValidationError("timeout", self.timeout, "must be >= 1")
