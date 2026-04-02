@@ -5,6 +5,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
+from deep_researcher.constants import MAX_TOOL_CONCURRENCY
 from deep_researcher.models import ToolResult
 
 logger = logging.getLogger("deep_researcher")
@@ -128,7 +129,7 @@ class ToolRegistry:
         """Run multiple tool calls concurrently via ThreadPoolExecutor."""
         results: list[tuple[str, ToolResult]] = [("", ToolResult(text="")) for _ in tool_calls]
 
-        with ThreadPoolExecutor(max_workers=min(len(tool_calls), 8)) as executor:
+        with ThreadPoolExecutor(max_workers=min(len(tool_calls), MAX_TOOL_CONCURRENCY)) as executor:
             futures = {}
             for i, tc in enumerate(tool_calls):
                 future = executor.submit(self.execute, tc["name"], tc["arguments"])

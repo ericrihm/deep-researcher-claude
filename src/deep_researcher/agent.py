@@ -5,6 +5,20 @@ from rich.panel import Panel
 from rich.table import Table
 
 from deep_researcher.config import Config
+from deep_researcher.constants import (
+    CATEGORIZE_BATCH_SIZE,
+    CATEGORY_SYNTHESIS_TIMEOUT,
+    CATEGORY_TOKEN_BUDGET,
+    CHARS_PER_TOKEN,
+    FALLBACK_MAX_PAPERS,
+    FALLBACK_TOKEN_BUDGET,
+    LLM_SEARCH_ITERATIONS,
+    MAX_COMPACT_FAILURES,
+    MAX_SEARCH_TOKENS,
+    MAX_SYNTHESIS_PAPERS,
+    MIN_CATEGORIZATION_COVERAGE,
+    TIER1_SOURCES,
+)
 from deep_researcher.llm import LLMClient
 from deep_researcher.models import Paper
 from deep_researcher.report import get_output_folder, save_checkpoint, save_report
@@ -235,10 +249,6 @@ List papers with free full-text versions available (if any were found).
 """
 
 
-# Token budget for search phase context (leave room for tool schemas + response)
-_MAX_SEARCH_TOKENS = 80_000
-
-
 def _compact_messages(messages: list[dict], token_estimate_fn) -> list[dict]:
     """Token-aware context compression (Claude Code autoCompact pattern).
 
@@ -247,7 +257,7 @@ def _compact_messages(messages: list[dict], token_estimate_fn) -> list[dict]:
     paper identifiers so the model knows what it already found.
     """
     estimated = token_estimate_fn(messages)
-    if estimated < _MAX_SEARCH_TOKENS:
+    if estimated < MAX_SEARCH_TOKENS:
         return messages
 
     # Find tool messages, compress oldest ones
@@ -258,7 +268,7 @@ def _compact_messages(messages: list[dict], token_estimate_fn) -> list[dict]:
     # Compress from oldest until we're under budget
     compacted = list(messages)
     for idx in tool_indices:
-        if token_estimate_fn(compacted) < _MAX_SEARCH_TOKENS:
+        if token_estimate_fn(compacted) < MAX_SEARCH_TOKENS:
             break
         content = compacted[idx]["content"]
         if len(content) > 300:
@@ -535,7 +545,7 @@ class ResearchAgent:
         self._systematic_search(query)
 
         # === PHASE 2: LLM-driven search (short — gaps only, sweep already covered main space) ===
-        _LLM_SEARCH_ITERS = min(3, self.config.max_iterations)
+        _LLM_SEARCH_ITERS = min(LLM_SEARCH_ITERATIONS, self.config.max_iterations)
         saved_max = self.config.max_iterations
         self.config.max_iterations = _LLM_SEARCH_ITERS
         self.console.print(f"\n[bold blue]Phase 2: LLM gap-fill search ({len(self.papers)} papers, max {_LLM_SEARCH_ITERS} iterations)...[/bold blue]")
@@ -570,7 +580,6 @@ class ResearchAgent:
         ]
         tool_schemas = self.registry.schemas()
         compact_failures = 0  # Circuit breaker (Claude Code pattern)
-        _MAX_COMPACT_FAILURES = 3
 
         for iteration in range(1, self.config.max_iterations + 1):
             self.console.print(f"\n[dim]--- Search {iteration}/{self.config.max_iterations} | {len(self.papers)} papers | {len(self._databases_used)} databases ---[/dim]")
@@ -585,11 +594,11 @@ class ResearchAgent:
                 # If context is likely too long, try compacting and retrying once
                 if "too long" in str(e).lower() or "context" in str(e).lower():
                     compact_failures += 1
-                    if compact_failures >= _MAX_COMPACT_FAILURES:
+                    if compact_failures >= MAX_COMPACT_FAILURES:
                         self.console.print("[red]Context compression failed repeatedly. Proceeding to synthesis.[/red]")
                         break
                     self.console.print("[yellow]Attempting context compression recovery...[/yellow]")
-                    messages = _compact_messages(messages, lambda m: _MAX_SEARCH_TOKENS + 1)  # Force compress
+                    messages = _compact_messages(messages, lambda m: MAX_SEARCH_TOKENS + 1)  # Force compress
                     try:
                         response = self.llm.chat(messages, tools=tool_schemas)
                     except Exception:
@@ -699,21 +708,19 @@ class ResearchAgent:
             return "No papers were found for this query."
 
         # Cap corpus — sort by quality tier then citations
-        _MAX_SYNTHESIS_PAPERS = 200
-        _TIER1_SOURCES = {"scopus", "ieee", "pubmed"}
         all_papers = self.papers
 
         def _paper_sort_key(p: Paper) -> tuple:
             # Tier 1 sources first, then by citations, then by year
             sources = {s.strip() for s in p.source.split(",")}
-            has_tier1 = 0 if sources & _TIER1_SOURCES else 1
+            has_tier1 = 0 if sources & TIER1_SOURCES else 1
             return (has_tier1, -(p.citation_count or 0), -(p.year or 0))
 
-        if len(all_papers) > _MAX_SYNTHESIS_PAPERS:
+        if len(all_papers) > MAX_SYNTHESIS_PAPERS:
             sorted_all = sorted(all_papers.values(), key=_paper_sort_key)
-            synthesis_papers = sorted_all[:_MAX_SYNTHESIS_PAPERS]
+            synthesis_papers = sorted_all[:MAX_SYNTHESIS_PAPERS]
             self.console.print(
-                f"  [yellow]Corpus capped: synthesizing top {_MAX_SYNTHESIS_PAPERS} of "
+                f"  [yellow]Corpus capped: synthesizing top {MAX_SYNTHESIS_PAPERS} of "
                 f"{len(all_papers)} papers (all saved to papers.json)[/yellow]"
             )
         else:
@@ -743,7 +750,7 @@ class ResearchAgent:
                 import concurrent.futures
                 with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                     future = pool.submit(self._synthesize_category, query, cat_name, cat_papers)
-                    section = future.result(timeout=300)  # 5 min — thinking mode needs time
+                    section = future.result(timeout=CATEGORY_SYNTHESIS_TIMEOUT)  # thinking mode needs time
                 category_sections.append((cat_name, section))
             except concurrent.futures.TimeoutError:
                 self.console.print(f"    [red]Timed out after 5 min — skipping[/red]")
@@ -769,11 +776,10 @@ class ResearchAgent:
         Processes papers in groups of 50 to stay within local model limits,
         then merges category assignments across batches.
         """
-        _BATCH_SIZE = 20
         all_categories: dict[str, list[int]] = {}
 
-        for batch_start in range(0, len(papers), _BATCH_SIZE):
-            batch_end = min(batch_start + _BATCH_SIZE, len(papers))
+        for batch_start in range(0, len(papers), CATEGORIZE_BATCH_SIZE):
+            batch_end = min(batch_start + CATEGORIZE_BATCH_SIZE, len(papers))
             batch = papers[batch_start:batch_end]
 
             lines = []
@@ -821,7 +827,7 @@ class ResearchAgent:
         - Level 2 (middle): One-line entry
         - Level 3 (tail): Counted
         """
-        corpus = _build_tiered_corpus(papers, token_budget=15000)
+        corpus = _build_tiered_corpus(papers, token_budget=CATEGORY_TOKEN_BUDGET)
 
         prompt = _CATEGORY_SYNTHESIS_PROMPT.format(
             query=query,
@@ -907,9 +913,9 @@ class ResearchAgent:
 
     def _fallback_synthesis(self, query: str, papers: list[Paper]) -> str:
         """Single-pass fallback if multi-step synthesis fails."""
-        # Use top 20 papers with tiered corpus to keep within local model limits
-        top_papers = papers[:20]
-        corpus = _build_tiered_corpus(top_papers, token_budget=8000)
+        # Use top papers with tiered corpus to keep within local model limits
+        top_papers = papers[:FALLBACK_MAX_PAPERS]
+        corpus = _build_tiered_corpus(top_papers, token_budget=FALLBACK_TOKEN_BUDGET)
         prompt = (
             f"Write a brief literature review on \"{query}\" based on these {len(top_papers)} papers. "
             f"Categorize by theme, include a table per category.\n\n{corpus}"
@@ -1009,7 +1015,7 @@ def _parse_categories(text: str, paper_count: int) -> dict[str, list[int]]:
     assigned = set()
     for indices in categories.values():
         assigned.update(indices)
-    if len(assigned) < paper_count * 0.3:
+    if len(assigned) < paper_count * MIN_CATEGORIZATION_COVERAGE:
         logger.warning("Categorization covered only %d/%d papers", len(assigned), paper_count)
         # Still return what we have — better than nothing
 
@@ -1023,8 +1029,6 @@ def _build_tiered_corpus(papers: list, token_budget: int = 15000) -> str:
     Level 2 (middle): One-line entry (~30 tokens each)
     Level 3 (tail): Counted as a group
     """
-    _CHARS_PER_TOKEN = 4
-
     sorted_papers = sorted(papers, key=lambda p: (-(p.citation_count or 0), -(p.year or 0)))
     lines = []
     tokens_used = 0
@@ -1035,7 +1039,7 @@ def _build_tiered_corpus(papers: list, token_budget: int = 15000) -> str:
     for i, p in enumerate(sorted_papers, 1):
         # Level 1: full entry
         full_entry = _paper_full_entry(i, p)
-        full_tokens = len(full_entry) // _CHARS_PER_TOKEN
+        full_tokens = len(full_entry) // CHARS_PER_TOKEN
         if tokens_used + full_tokens < level1_budget:
             lines.append(full_entry)
             tokens_used += full_tokens
@@ -1044,7 +1048,7 @@ def _build_tiered_corpus(papers: list, token_budget: int = 15000) -> str:
 
         # Level 2: one-line entry
         short_entry = _paper_short_entry(i, p)
-        short_tokens = len(short_entry) // _CHARS_PER_TOKEN
+        short_tokens = len(short_entry) // CHARS_PER_TOKEN
         if tokens_used + short_tokens < level2_budget:
             lines.append(short_entry)
             tokens_used += short_tokens
