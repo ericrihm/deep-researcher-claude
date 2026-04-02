@@ -4,6 +4,7 @@ import hashlib
 import html
 import re
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass
@@ -155,6 +156,37 @@ class ToolResult:
     """Structured result from a tool execution."""
     text: str
     papers: list[Paper] = field(default_factory=list)
+    data: Any = None
+
+
+@dataclass
+class PipelineState:
+    """Immutable-ish state that flows through the research pipeline.
+
+    Each phase receives the current state and returns a new state via evolve().
+    This prevents in-place mutation (claude-code Principle 3).
+    """
+    query: str
+    papers: dict[str, Paper] = field(default_factory=dict)
+    categories: dict[str, list[int]] | None = None
+    synthesis_papers: list[Paper] = field(default_factory=list)
+    category_sections: list[tuple[str, str]] = field(default_factory=list)
+    cross_section: str = ""
+    report: str = ""
+
+    def evolve(self, **kwargs: Any) -> PipelineState:
+        """Return a new PipelineState with specified fields replaced."""
+        current = {
+            "query": self.query,
+            "papers": self.papers,
+            "categories": self.categories,
+            "synthesis_papers": self.synthesis_papers,
+            "category_sections": self.category_sections,
+            "cross_section": self.cross_section,
+            "report": self.report,
+        }
+        current.update(kwargs)
+        return PipelineState(**current)
 
 
 def clean_abstract(text: str | None) -> str | None:
