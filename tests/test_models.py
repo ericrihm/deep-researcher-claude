@@ -2,7 +2,7 @@ import os
 import re
 import tempfile
 
-from deep_researcher.models import Paper, clean_abstract
+from deep_researcher.models import Paper, PipelineState, ToolResult, clean_abstract
 from deep_researcher.report import save_report
 
 
@@ -141,3 +141,39 @@ class TestBibtexCollisionHandling:
             assert len(keys) == 2
             # No suffix needed — keys are naturally distinct
             assert all("_" not in k or k.count("_") == 0 for k in keys) or keys[0] != keys[1]
+
+
+class TestPipelineState:
+    def test_initial_state(self):
+        state = PipelineState(query="test query")
+        assert state.query == "test query"
+        assert state.papers == {}
+        assert state.categories is None
+        assert state.synthesis_papers == []
+        assert state.category_sections == []
+        assert state.cross_section == ""
+        assert state.report == ""
+
+    def test_evolve_creates_new_instance(self):
+        state = PipelineState(query="test")
+        papers = {"k": Paper(title="Test")}
+        new_state = state.evolve(papers=papers)
+        assert new_state.papers == papers
+        assert new_state.query == "test"
+        assert state.papers == {}  # original unchanged
+
+    def test_evolve_preserves_other_fields(self):
+        state = PipelineState(query="test", papers={"k": Paper(title="P")})
+        new_state = state.evolve(categories={"cat": [0]})
+        assert new_state.papers == state.papers
+        assert new_state.categories == {"cat": [0]}
+
+
+class TestToolResultData:
+    def test_data_field_default_none(self):
+        result = ToolResult(text="ok")
+        assert result.data is None
+
+    def test_data_field_with_value(self):
+        result = ToolResult(text="ok", data={"categories": {"A": [0, 1]}})
+        assert result.data["categories"]["A"] == [0, 1]
