@@ -23,12 +23,12 @@
 
 Deep Researcher searches **Google Scholar** for academically-ranked papers, enriches them with full metadata from **OpenAlex**, and uses a local LLM to write a **structured literature review** with consistent citations.
 
-- **100 papers** from Google Scholar's semantic search — no keyword hacks, no irrelevant results
-- **Full metadata** — DOIs, abstracts, journal names, citation counts, open access URLs
-- **Structured synthesis** — papers categorized by theme, with per-category analysis and cross-category patterns
-- **Consistent `[N]` citations** — every reference in the text matches the reference list
+- **100 papers** from Google Scholar's semantic search, no keyword hacks, no irrelevant results
+- **Full metadata**: DOIs, abstracts, journal names, citation counts, open access URLs
+- **Structured synthesis**: papers categorized by theme, with per-category analysis and cross-category patterns
+- **Consistent `[N]` citations**: every reference in the text matches the reference list
 - **BibTeX + CSV output** ready for LaTeX/Overleaf or Excel
-- **Runs locally** with Ollama — your queries never leave your machine
+- **Runs locally** with Ollama. Your queries never leave your machine
 - **Tool-based agentic architecture** inspired by [Claude Code](https://github.com/anthropics/claude-code)
 - **4 dependencies**, no LangChain
 
@@ -85,9 +85,9 @@ deep-researcher "quantum computing algorithms" --provider deepseek
 
 ## How It Works
 
-1. **Search** — Queries Google Scholar for up to 100 semantically-ranked academic papers
-2. **Enrich** — Concurrent workers (8 threads) look up each paper in OpenAlex/CrossRef for full abstracts, DOIs, and journal metadata
-3. **Synthesize** — LLM categorizes papers into themes, writes per-category analysis, then identifies cross-category patterns and gaps
+1. **Search**: Queries Google Scholar for up to 100 semantically-ranked academic papers
+2. **Enrich**: Concurrent workers (8 threads) look up each paper in OpenAlex/CrossRef for full abstracts, DOIs, and journal metadata
+3. **Synthesize**: LLM categorizes papers into themes, writes per-category analysis, then identifies cross-category patterns and gaps
 
 Each run produces:
 
@@ -241,7 +241,7 @@ or those with legacy data environments.
 
 </details>
 
-> Every `[N]` in the text matches `[N]` in the reference list. No hallucinated sources — every paper comes from Google Scholar, every claim cites a real abstract.
+> Every `[N]` in the text matches `[N]` in the reference list. No hallucinated sources. Every paper comes from Google Scholar, every claim cites a real abstract.
 
 ---
 
