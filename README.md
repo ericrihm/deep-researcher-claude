@@ -9,7 +9,7 @@
 <p align="center">
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10+-blue.svg?style=flat-square" alt="Python 3.10+"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg?style=flat-square" alt="License: MIT"></a>
-  <img src="https://img.shields.io/badge/version-0.4.0-blue.svg?style=flat-square" alt="Version: 0.4.0">
+  <img src="https://img.shields.io/badge/version-0.5.0-blue.svg?style=flat-square" alt="Version: 0.5.0">
 </p>
 
 <p align="center">
