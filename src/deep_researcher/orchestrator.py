@@ -53,6 +53,7 @@ class Orchestrator:
         # All tools (Principle 1: tools as unit of action)
         llm = LLMClient(config)
         self._search_tool = ScholarSearchTool()
+        self._search_tool.set_year_range(config.start_year, config.end_year)
         self._enrichment_tool = EnrichmentTool()
         self._clarify_tool = ClarifyTool(llm=llm)
         self._categorize_tool = CategorizeTool(llm=llm)

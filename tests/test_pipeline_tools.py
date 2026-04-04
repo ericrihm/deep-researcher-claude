@@ -69,6 +69,36 @@ class TestScholarSearchTool:
             result = tool.execute(query="test", max_results=10, cancel=cancel)
         assert len(result.papers) == 0
 
+    def test_filters_papers_outside_year_range(self):
+        tool = self._make_tool()
+        tool.set_year_range(2023, 2025)
+        mock_results = [
+            {"bib": {"title": "Old Paper", "author": ["A"], "pub_year": "2018"}, "num_citations": 10},
+            {"bib": {"title": "Recent Paper", "author": ["B"], "pub_year": "2024"}, "num_citations": 5},
+            {"bib": {"title": "Future Paper", "author": ["C"], "pub_year": "2027"}, "num_citations": 1},
+            {"bib": {"title": "No Year Paper", "author": ["D"]}, "num_citations": 3},
+        ]
+        with patch("deep_researcher.tools.scholar_search.scholarly") as mock_scholarly:
+            mock_scholarly.search_pubs.return_value = iter(mock_results)
+            result = tool.execute(query="test", max_results=10)
+        titles = [p.title for p in result.papers]
+        assert "Old Paper" not in titles
+        assert "Future Paper" not in titles
+        assert "Recent Paper" in titles
+        assert "No Year Paper" in titles  # unknown year kept
+
+    def test_no_year_range_returns_all(self):
+        tool = self._make_tool()
+        # no set_year_range call
+        mock_results = [
+            {"bib": {"title": "Paper 2010", "author": ["A"], "pub_year": "2010"}, "num_citations": 1},
+            {"bib": {"title": "Paper 2024", "author": ["B"], "pub_year": "2024"}, "num_citations": 1},
+        ]
+        with patch("deep_researcher.tools.scholar_search.scholarly") as mock_scholarly:
+            mock_scholarly.search_pubs.return_value = iter(mock_results)
+            result = tool.execute(query="test", max_results=10)
+        assert len(result.papers) == 2
+
     def test_is_read_only(self):
         tool = self._make_tool()
         assert tool.is_read_only is True
