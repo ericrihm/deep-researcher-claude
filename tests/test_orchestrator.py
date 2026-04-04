@@ -79,6 +79,19 @@ class TestOrchestrator:
         assert state.papers is original_papers  # original unchanged
         assert len(new_state.papers) == 1
 
+    def test_init_propagates_year_range_to_search_tool(self):
+        from deep_researcher.orchestrator import Orchestrator
+        config = Config(
+            model="test-model",
+            base_url="http://localhost:11434/v1",
+            api_key="test",
+            start_year=2020,
+            end_year=2025,
+        )
+        orch = Orchestrator(config)
+        assert orch._search_tool._start_year == 2020
+        assert orch._search_tool._end_year == 2025
+
     def test_assemble_report_format(self):
         from deep_researcher.orchestrator import _assemble_report
         papers = [

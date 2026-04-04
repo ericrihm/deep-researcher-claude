@@ -76,6 +76,8 @@ class ScholarSearchTool(Tool):
         except Exception as e:
             logger.warning("Google Scholar search failed: %s", e)
 
+        papers = self._filter_by_year(papers)
+
         return ToolResult(
             text=f"Found {len(papers)} papers from Google Scholar",
             papers=papers,
