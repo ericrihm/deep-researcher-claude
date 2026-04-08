@@ -14,13 +14,14 @@ dependencies = [
     "httpx>=0.27.0",
     "rich>=13.0.0",
     "scholarly>=1.7.0",
+    # Powers `--provider claude`, the TUI's default provider when
+    # `claude login` credentials are on disk. Bundled rather than
+    # optional because the TUI auto-detects and prefers it.
+    "claude-agent-sdk>=0.1",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0.0"]
-# Enables `--provider claude` (routes through bundled `claude` CLI + OAuth).
-# Requires `claude login` to have been run once on this machine.
-claude = ["claude-agent-sdk>=0.1"]
 
 [project.scripts]
 deep-researcher = "deep_researcher.__main__:main"

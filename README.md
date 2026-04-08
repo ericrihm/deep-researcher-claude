@@ -43,16 +43,12 @@ Deep Researcher searches **Google Scholar** for academically-ranked papers, enri
 ### Install
 
 ```bash
-git clone https://github.com/jackswl/deep-researcher.git
-cd deep-researcher
+git clone https://github.com/ericrihm/deep-researcher-claude.git
+cd deep-researcher-claude
 pip install -e .
 ```
 
-To use `--provider claude` (see below), install the optional extra:
-
-```bash
-pip install -e ".[claude]"
-```
+That's it — `claude-agent-sdk` is bundled by default, so `--provider claude` works out of the box once you've run `claude login` (see below).
 
 <details>
 <summary><strong>Windows users: one-time setup (optional but recommended)</strong></summary>
@@ -176,16 +172,21 @@ the "LLMs as psycholinguistic subjects" framing.
 ### First-time setup for the `claude` provider
 
 If you have a Claude subscription, the easiest way to run deep-researcher
-is to use your subscription auth — no API key required. One-time setup:
+is to use your subscription auth — no API key required. One-time setup
+(after `pip install -e .`):
 
 ```bash
-pip install -e ".[claude]"   # install the claude extra
-claude login                  # one-time browser login
+claude login     # one-time browser login
 ```
 
-After that, every time you run `deep-researcher` the TUI will
+That's it. The next time you run `deep-researcher`, the TUI will
 auto-detect your credentials and default to the `claude` provider. Just
 type your question and press Enter.
+
+> You'll need the [`claude` CLI](https://docs.claude.com/en/docs/claude-code/quickstart)
+> installed to run `claude login`. The `claude-agent-sdk` Python package
+> (bundled with deep-researcher) uses the OAuth credentials that
+> `claude login` writes to `~/.claude/.credentials.json`.
 
 > **Windows users:** run `deep-researcher` from a **plain PowerShell
 > window**, not from inside the `claude` CLI session. Claude Code CLI
