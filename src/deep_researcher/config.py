@@ -38,6 +38,10 @@ class Config:
     start_year: int | None = None
     end_year: int | None = None
     interactive: bool = False
+    # Selects which LLM client implementation make_llm_client returns.
+    # "openai"       -> existing OpenAI-compatible LLMClient (Ollama, OpenAI, Groq, …)
+    # "claude_agent" -> claude_agent_sdk-backed client (OAuth via `claude login`)
+    provider_kind: str = "openai"
 
     def __post_init__(self) -> None:
         file_cfg = _load_config_file()
