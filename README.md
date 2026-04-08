@@ -114,7 +114,8 @@ What would you like to research?  (a sentence or short paragraph works best)
 
 Type your research question, press **Enter** to accept the settings,
 and deep-researcher gets to work. Your last query and settings are
-remembered between runs.
+remembered between runs. Press **`q`** or **Ctrl-C** at any prompt
+to quit cleanly.
 
 If the `deep-researcher` command isn't on your PATH for any reason,
 `python -m deep_researcher` works identically.
