@@ -18,6 +18,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0.0"]
+# Enables `--provider claude` (routes through bundled `claude` CLI + OAuth).
+# Requires `claude login` to have been run once on this machine.
+claude = ["claude-agent-sdk>=0.1"]
 
 [project.scripts]
 deep-researcher = "deep_researcher.__main__:main"

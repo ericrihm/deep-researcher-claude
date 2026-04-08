@@ -21,7 +21,7 @@ from deep_researcher.constants import (
     MAX_SYNTHESIS_PAPERS,
 )
 from deep_researcher.display import print_summary, save_results
-from deep_researcher.llm import LLMClient
+from deep_researcher.llm_factory import make_llm_client
 from deep_researcher.models import Paper, PipelineState
 from deep_researcher.report import get_output_folder, save_checkpoint
 from deep_researcher.tools.categorize import CategorizeTool
@@ -51,7 +51,7 @@ class Orchestrator:
         self._output_folder: str = ""
 
         # All tools (Principle 1: tools as unit of action)
-        llm = LLMClient(config)
+        llm = make_llm_client(config)
         self._search_tool = ScholarSearchTool()
         self._search_tool.set_year_range(config.start_year, config.end_year)
         self._enrichment_tool = EnrichmentTool()

@@ -21,6 +21,10 @@
 
 ---
 
+> **Fork notice.** This is a fork of [jackswl/deep-researcher](https://github.com/jackswl/deep-researcher) that adds an interactive TUI (no shell quoting required), a `--provider claude` option using Claude subscription OAuth via `claude login` (no API key), and Windows/PowerShell encoding fixes. The Google Scholar pipeline, OpenAlex enrichment, and synthesis architecture are all upstream's work — go star the [original repo](https://github.com/jackswl/deep-researcher).
+
+---
+
 Deep Researcher searches **Google Scholar** for academically-ranked papers, enriches them with full metadata from **OpenAlex**, and uses a local LLM to write a **structured literature review** with consistent citations.
 
 - **100 papers** from Google Scholar's semantic search, no keyword hacks, no irrelevant results
@@ -36,48 +40,217 @@ Deep Researcher searches **Google Scholar** for academically-ranked papers, enri
 
 ## Quick Start
 
+### Install
+
 ```bash
 git clone https://github.com/jackswl/deep-researcher.git
 cd deep-researcher
 pip install -e .
 ```
 
+To use `--provider claude` (see below), install the optional extra:
+
+```bash
+pip install -e ".[claude]"
+```
+
+<details>
+<summary><strong>Windows users: one-time setup (optional but recommended)</strong></summary>
+
+Windows PowerShell ships with a legacy text encoding (cp1252) that
+mangles Unicode characters — you'll see `â•­â”€â”€` instead of `╭──`,
+`â€”` instead of `—`, and other gibberish in the output of many
+modern CLI tools (including pip, git, and `claude`).
+
+**Deep Researcher auto-fixes this for its own output**, so its TUI
+and reports will render correctly even if you do nothing. But if you
+want *other* tools in your terminal to look right too, fix it once:
+
+**Per-session (easy):**
+
+```powershell
+chcp 65001
+```
+
+Run this in PowerShell before launching other tools. Lasts until you
+close the terminal.
+
+**Permanent OS-wide (recommended):** open **Windows Settings → Time &
+Language → Language & Region → Administrative language settings →
+Change system locale…**, check **"Beta: Use Unicode UTF-8 for worldwide
+language support"**, click OK, and reboot. One checkbox, one reboot,
+Unicode works everywhere forever.
+
+</details>
+
+### Launch
+
+Just run the command with no arguments:
+
+```bash
+deep-researcher
+```
+
+You'll see something like this:
+
+```
+╭─────────────────── Deep Researcher ───────────────────╮
+│ Deep Researcher                                       │
+│ Type a research question and I'll search Google       │
+│ Scholar, read ~100 papers, and write you a            │
+│ literature review.                                    │
+╰───────────────────────────────────────────────────────╯
+
+What would you like to research?  (a sentence or short paragraph works best)
+  > chatbots for cognitive behavioral therapy delivery
+
+┌──────────────── Current settings ────────────────┐
+│   Research question   chatbots for cognitive...  │
+│   Provider            claude                     │
+│   Model               claude-sonnet-4-5          │
+│   Year range          any                        │
+└──────────────────────────────────────────────────┘
+  Press Enter to start research  or pick an option to change:
+  1 Research question   2 Provider   3 Model   4 Year range
+  5 Email   6 Output folder   q Quit
+  > [Enter]
+```
+
+Type your research question, press **Enter** to accept the settings,
+and deep-researcher gets to work. Your last query and settings are
+remembered between runs.
+
+If the `deep-researcher` command isn't on your PATH for any reason,
+`python -m deep_researcher` works identically.
+
+#### Writing a good research question
+
+The query is just plain English — **no quotes, no flags, no boolean
+operators**. One sentence or a short paragraph both work. Good queries
+name the **method** and the **topic** specifically enough that Google
+Scholar returns focused results and the categorizer can find distinct
+themes.
+
+**Examples that work well:**
+
+```
+how large language models compare to human reasoning and cognitive biases
+```
+
+```
+using chatbots to deliver cognitive behavioral therapy for anxiety and depression
+```
+
+```
+machine learning methods for detecting depression from social media language
+```
+
+```
+transformer models for protein structure prediction in drug discovery
+```
+
+A longer framing gives the categorizer even more context:
+
+```
+How large language models are being used as cognitive models of human language
+processing, including work that compares LLM outputs to human behavioral data,
+studies of reasoning biases shared between humans and models, and critiques of
+the "LLMs as psycholinguistic subjects" framing.
+```
+
+**Tips:**
+
+- **Be specific about both the method and the domain.** `AI and psychology` is
+  too broad and returns noise. `large language models for depression screening`
+  is focused enough to produce a good review.
+- **Name the technique if you know it** — "transformer models", "reinforcement
+  learning", "graph neural networks", "natural language processing".
+- **Name the application domain** — "clinical diagnosis", "drug discovery",
+  "structural health monitoring", "personality prediction".
+- **Don't worry about punctuation, capitalization, or quotes.** The tool
+  tokenizes naturally.
+- **Avoid boolean operators** (`AND`, `OR`, exact-match quotes). Google
+  Scholar's semantic search handles natural language better than keyword
+  hacks.
+
+### First-time setup for the `claude` provider
+
+If you have a Claude subscription, the easiest way to run deep-researcher
+is to use your subscription auth — no API key required. One-time setup:
+
+```bash
+pip install -e ".[claude]"   # install the claude extra
+claude login                  # one-time browser login
+```
+
+After that, every time you run `deep-researcher` the TUI will
+auto-detect your credentials and default to the `claude` provider. Just
+type your question and press Enter.
+
+> **Windows users:** run `deep-researcher` from a **plain PowerShell
+> window**, not from inside the `claude` CLI session. Claude Code CLI
+> v2.1.92 on PowerShell 7.6.0 has a known Unicode rendering bug that
+> garbles its own status line; running deep-researcher from bare
+> PowerShell avoids this entirely and still uses your `claude login`
+> credentials.
+
+### Power users / scripts: one-shot mode
+
+Pass the question and flags directly, skipping the TUI:
+
+```bash
+deep-researcher "chatbots for cognitive behavioral therapy" --provider claude --start-year 2020
+```
+
 ### Run with Ollama (local, free, private)
 
 ```bash
 ollama pull qwen3.5:9b
-deep-researcher "large language models for automated code compliance in BIM"
+deep-researcher                       # TUI, pick "ollama" in the provider menu
+# or one-shot:
+deep-researcher "your research question" --provider ollama
 ```
 
-### Run with a cloud provider
+### Run with a cloud API provider
+
+Set `OPENAI_API_KEY` to your provider's key (the variable name is shared
+across providers — `--provider` picks which endpoint it's sent to).
+
+**macOS / Linux (bash, zsh):**
 
 ```bash
-# OpenAI
 export OPENAI_API_KEY="sk-..."
 deep-researcher "machine learning for drug discovery" --provider openai
+```
 
-# Groq (fast, free tier available)
-export OPENAI_API_KEY="gsk_..."
-deep-researcher "CRISPR gene editing" --provider groq
+**Windows (PowerShell):**
 
-# DeepSeek
-export OPENAI_API_KEY="sk-..."
+```powershell
+$env:OPENAI_API_KEY = "sk-..."
+deep-researcher "machine learning for drug discovery" --provider openai
+```
+
+Other providers work the same way — just change the key and `--provider`:
+
+```bash
+deep-researcher "CRISPR gene editing" --provider groq        # Groq (free tier)
 deep-researcher "quantum computing algorithms" --provider deepseek
 ```
 
 <details>
 <summary><strong>All supported providers</strong></summary>
 
-| Provider | Flag | Default Model | API Key |
+| Provider | Flag | Default Model | Auth |
 |---|---|---|---|
 | Ollama | `--provider ollama` | `qwen3.5:9b` | No (local) |
 | LMStudio | `--provider lmstudio` | auto-detect | No (local) |
-| OpenAI | `--provider openai` | `gpt-5.4-mini` | Yes |
-| Anthropic | `--provider anthropic` | `claude-sonnet-4-6` | Yes |
-| Groq | `--provider groq` | `qwen/qwen3-32b` | Yes (free tier) |
-| DeepSeek | `--provider deepseek` | `deepseek-chat` | Yes |
-| OpenRouter | `--provider openrouter` | `claude-sonnet-4-6` | Yes (free models) |
-| Together | `--provider together` | `Llama-4-Maverick` | Yes |
+| Claude (subscription) | `--provider claude` | `claude-sonnet-4-5` | `claude login` (OAuth) |
+| OpenAI | `--provider openai` | `gpt-5.4-mini` | API key |
+| Anthropic | `--provider anthropic` | `claude-sonnet-4-6` | API key |
+| Groq | `--provider groq` | `qwen/qwen3-32b` | API key (free tier) |
+| DeepSeek | `--provider deepseek` | `deepseek-chat` | API key |
+| OpenRouter | `--provider openrouter` | `claude-sonnet-4-6` | API key (free models) |
+| Together | `--provider together` | `Llama-4-Maverick` | API key |
 
 </details>
 
@@ -248,10 +421,12 @@ or those with legacy data environments.
 ## Usage
 
 ```
-deep-researcher "your research question" [options]
+deep-researcher                           # launch the interactive TUI
+deep-researcher "your research question"  # one-shot with a query
+deep-researcher "your query" [options]
 
 Options:
-  --provider PROVIDER    LLM provider (ollama, openai, groq, etc.)
+  --provider PROVIDER    LLM provider (ollama, claude, openai, groq, etc.)
   --model MODEL          LLM model name
   --base-url URL         OpenAI-compatible API URL
   --api-key KEY          API key
@@ -261,6 +436,8 @@ Options:
   --output DIR           Output directory (default: ./output)
   --email EMAIL          Email for polite API access to OpenAlex/CrossRef
   --verbose              Enable debug logging
+  --reset-auth           Clear stored auth state for the selected provider
+  --show-advisory        Re-show the Claude OAuth policy notice
 ```
 
 ```bash
