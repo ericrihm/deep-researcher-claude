@@ -164,7 +164,15 @@ def run(console: Console, providers: dict) -> Optional[tuple[str, Config, str]]:
     # Ask the query up front — this is what novices expect: type, get
     # asked, answer, go. The settings menu comes after so they can
     # review / tweak before committing.
-    query = _ask_question(console, query)
+    #
+    # Catch Ctrl-C / EOF at every prompt so a novice bailing out of
+    # the TUI sees a clean "Bye." instead of a Rich traceback dumped
+    # into their PowerShell window.
+    try:
+        query = _ask_question(console, query)
+    except (KeyboardInterrupt, EOFError):
+        console.print("\n[dim]Bye.[/dim]")
+        return None
 
     while True:
         console.print()
@@ -188,10 +196,18 @@ def run(console: Console, providers: dict) -> Optional[tuple[str, Config, str]]:
             "[cyan]6[/cyan] Output folder   "
             "[red]q[/red] Quit"
         )
-        choice = Prompt.ask("  >", default="s", show_default=False).strip().lower()
+        try:
+            choice = Prompt.ask("  >", default="s", show_default=False).strip().lower()
+        except (KeyboardInterrupt, EOFError):
+            console.print("\n[dim]Bye.[/dim]")
+            return None
 
         if choice == "1":
-            query = _ask_question(console, query)
+            try:
+                query = _ask_question(console, query)
+            except (KeyboardInterrupt, EOFError):
+                console.print("\n[dim]Bye.[/dim]")
+                return None
         elif choice == "2":
             new_provider = _pick_provider(console, providers, provider_name)
             if new_provider and new_provider != provider_name:
