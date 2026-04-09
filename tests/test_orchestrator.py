@@ -115,3 +115,45 @@ class TestOrchestrator:
         assert "#### References" in report
         assert "[1] Alice (2023)" in report
         assert "[2] Bob et al. (2024)" in report
+
+    def test_exec_summary_runs_during_synthesis(self):
+        """Exec summary tool is called during _run_synthesis and its text
+        ends up on state.exec_summary."""
+        orch = self._make_orchestrator()
+        orch._categorize_tool.safe_execute.return_value = ToolResult(
+            text="ok", data={"Cat A": [0, 1]},
+        )
+        orch._synthesize_tool.safe_execute.return_value = ToolResult(text="cat body")
+        orch._cross_analysis_tool.safe_execute.return_value = ToolResult(text="cross body")
+        orch._fallback_tool = MagicMock()
+        orch._exec_summary_tool = MagicMock()
+        orch._exec_summary_tool.safe_execute.return_value = ToolResult(text="my summary")
+
+        papers = [Paper(title=f"P{i}", citation_count=10 - i) for i in range(2)]
+        state = PipelineState(
+            query="q",
+            papers={p.unique_key: p for p in papers},
+        )
+        new_state = orch._run_synthesis(state)
+        assert new_state.exec_summary == "my summary"
+        assert orch._exec_summary_tool.safe_execute.called
+
+    def test_exec_summary_failure_does_not_break_synthesis(self):
+        orch = self._make_orchestrator()
+        orch._categorize_tool.safe_execute.return_value = ToolResult(
+            text="ok", data={"Cat A": [0, 1]},
+        )
+        orch._synthesize_tool.safe_execute.return_value = ToolResult(text="cat body")
+        orch._cross_analysis_tool.safe_execute.return_value = ToolResult(text="cross body")
+        orch._fallback_tool = MagicMock()
+        orch._exec_summary_tool = MagicMock()
+        orch._exec_summary_tool.safe_execute.return_value = ToolResult(text="")
+
+        papers = [Paper(title=f"P{i}", citation_count=10 - i) for i in range(2)]
+        state = PipelineState(
+            query="q",
+            papers={p.unique_key: p for p in papers},
+        )
+        new_state = orch._run_synthesis(state)
+        assert new_state.exec_summary == ""
+        assert new_state.report  # report still assembled

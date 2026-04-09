@@ -28,6 +28,7 @@ from deep_researcher.tools.categorize import CategorizeTool
 from deep_researcher.tools.clarify import ClarifyTool
 from deep_researcher.tools.cross_analysis import CrossAnalysisTool
 from deep_researcher.tools.enrichment import EnrichmentTool
+from deep_researcher.tools.executive_summary import ExecutiveSummaryTool
 from deep_researcher.tools.fallback_synthesis import FallbackSynthesisTool
 from deep_researcher.tools.scholar_search import ScholarSearchTool
 from deep_researcher.tools.synthesize import SynthesisTool
@@ -61,6 +62,7 @@ class Orchestrator:
         self._synthesize_tool = SynthesisTool(llm=llm)
         self._cross_analysis_tool = CrossAnalysisTool(llm=llm)
         self._fallback_tool = FallbackSynthesisTool(llm=llm)
+        self._exec_summary_tool = ExecutiveSummaryTool(llm=llm)
 
     def cancel(self) -> None:
         """Signal the orchestrator to stop gracefully."""
@@ -249,6 +251,8 @@ class Orchestrator:
 
         # Submit all categories concurrently (isConcurrencySafe=True)
         results_by_name: dict[str, str] = {}
+        exec_summary_text = ""
+        _EXEC_SENTINEL = "__exec_summary__"
         with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_SYNTHESIS_CONCURRENCY) as pool:
             future_to_name: dict[concurrent.futures.Future, str] = {}
             for cat_name, cat_indexed in work_items:
@@ -262,11 +266,32 @@ class Orchestrator:
                 )
                 future_to_name[future] = cat_name
 
+            # Submit the executive summary in parallel with the per-category
+            # calls. Running here (and not after the pool drains) keeps the
+            # wall-clock impact at ~0 as long as MAX_SYNTHESIS_CONCURRENCY >
+            # len(categories), which is the common case.
+            if not self._cancel.is_set():
+                exec_future = pool.submit(
+                    self._exec_summary_tool.safe_execute,
+                    query=state.query,
+                    synthesis_papers=synthesis_papers,
+                    categories=categories,
+                )
+                future_to_name[exec_future] = _EXEC_SENTINEL
+
             for future in concurrent.futures.as_completed(future_to_name):
                 if self._cancel.is_set():
                     self.console.print("  [yellow]Synthesis cancelled.[/yellow]")
                     break
                 cat_name = future_to_name[future]
+                if cat_name == _EXEC_SENTINEL:
+                    try:
+                        result = future.result(timeout=CATEGORY_SYNTHESIS_TIMEOUT)
+                        exec_summary_text = result.text or ""
+                    except Exception as e:
+                        logger.debug("Executive summary failed: %s", e)
+                        exec_summary_text = ""
+                    continue
                 try:
                     result = future.result(timeout=CATEGORY_SYNTHESIS_TIMEOUT)
                     if not result.text.startswith("Synthesis failed"):
@@ -289,7 +314,7 @@ class Orchestrator:
         if not category_sections:
             self.console.print("  [yellow]All categories failed — falling back[/yellow]")
             fb_result = self._fallback_tool.safe_execute(papers=synthesis_papers, query=state.query)
-            return state.evolve(report=fb_result.text)
+            return state.evolve(report=fb_result.text, exec_summary=exec_summary_text)
 
         state = state.evolve(category_sections=category_sections)
 
@@ -302,6 +327,7 @@ class Orchestrator:
         state = state.evolve(cross_section=cross_result.text)
 
         # Step 4: Assemble report (programmatic — not LLM)
+        state = state.evolve(exec_summary=exec_summary_text)
         report = _assemble_report(state)
         return state.evolve(report=report)
 
