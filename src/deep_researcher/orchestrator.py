@@ -133,8 +133,9 @@ class Orchestrator:
         self._output_folder = get_output_folder(query, self.config.output_dir)
 
         # Phase 1: Search
-        self.console.print("\n[bold blue]Phase 1: Searching Google Scholar...[/bold blue]")
-        state = self._run_search(state)
+        self.console.print("\n[bold blue]Phase 1: Searching Google Scholar + Scopus...[/bold blue]")
+        with self.console.status("[cyan]Searching academic databases…", spinner="dots"):
+            state = self._run_search(state)
 
         if not state.papers:
             self.console.print("[yellow]No papers found.[/yellow]")
@@ -142,7 +143,8 @@ class Orchestrator:
 
         # Phase 2: Enrich
         self.console.print(f"\n[bold blue]Phase 2: Enriching {len(state.papers)} papers...[/bold blue]")
-        state = self._run_enrichment(state)
+        with self.console.status("[cyan]Fetching metadata from OpenAlex/CrossRef/Unpaywall…", spinner="dots"):
+            state = self._run_enrichment(state)
 
         # Checkpoint
         if state.papers and self._output_folder:
@@ -153,7 +155,8 @@ class Orchestrator:
 
         # Phase 3: Synthesize
         self.console.print(f"\n[bold blue]Phase 3: Synthesizing {len(state.papers)} papers...[/bold blue]")
-        state = self._run_synthesis(state)
+        with self.console.status("[cyan]Asking the model to read and write…", spinner="dots"):
+            state = self._run_synthesis(state)
 
         print_summary(self.console, state)
         paths = save_results(self.console, state, self.config.output_dir, self._output_folder or None)
@@ -218,7 +221,8 @@ class Orchestrator:
         self._output_folder = folder
 
         self.console.print(f"\n[bold blue]Re-running synthesis on {len(state.papers)} papers...[/bold blue]")
-        state = self._run_synthesis(state)
+        with self.console.status("[cyan]Asking the model to read and write…", spinner="dots"):
+            state = self._run_synthesis(state)
 
         print_summary(self.console, state)
         paths = save_results(self.console, state, self.config.output_dir, folder)
@@ -231,39 +235,65 @@ class Orchestrator:
     # ------------------------------------------------------------------
 
     def _run_search(self, state: PipelineState) -> PipelineState:
-        """Phase 1: Search Google Scholar, then (optionally) Scopus."""
-        result = self._search_tool.safe_execute(
-            query=state.query,
-            cancel=self._cancel,
-        )
-        papers: dict[str, Paper] = {}
-        for paper in result.papers:
-            key = paper.unique_key
-            if key not in papers:
-                papers[key] = paper
+        """Phase 1: Search Google Scholar and Scopus in parallel.
 
-        scholar_count = len(papers)
+        The two searches are independent HTTP calls so they fan out on a
+        small thread pool. Wall-clock for the search phase is now max(scholar,
+        scopus) instead of scholar + scopus, which on a typical run shaves
+        ~10-30s off the slowest source.
+        """
+        scopus_enabled = not self.config.no_elsevier
 
-        if not self.config.no_elsevier:
-            scopus_result = self._scopus_tool.safe_execute(
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            scholar_future = pool.submit(
+                self._search_tool.safe_execute,
                 query=state.query,
                 cancel=self._cancel,
             )
-            new_from_scopus = 0
+            scopus_future = (
+                pool.submit(
+                    self._scopus_tool.safe_execute,
+                    query=state.query,
+                    cancel=self._cancel,
+                )
+                if scopus_enabled
+                else None
+            )
+
+            try:
+                scholar_result = scholar_future.result()
+            except Exception as e:
+                logger.debug("Scholar search failed: %s", e)
+                from deep_researcher.models import ToolResult
+                scholar_result = ToolResult(text=f"Scholar error: {e}", papers=[])
+
+            scopus_result = None
+            if scopus_future is not None:
+                try:
+                    scopus_result = scopus_future.result()
+                except Exception as e:
+                    logger.debug("Scopus search failed: %s", e)
+
+        papers: dict[str, Paper] = {}
+        for paper in scholar_result.papers:
+            key = paper.unique_key
+            if key not in papers:
+                papers[key] = paper
+        scholar_count = len(papers)
+
+        new_from_scopus = 0
+        if scopus_result is not None:
             for paper in scopus_result.papers:
                 key = paper.unique_key
                 if key not in papers:
                     papers[key] = paper
                     new_from_scopus += 1
-            if new_from_scopus:
-                self.console.print(
-                    f"  [green]Found {scholar_count} papers on Scholar + "
-                    f"{new_from_scopus} new on Scopus[/green]"
-                )
-            else:
-                self.console.print(
-                    f"  [green]Found {scholar_count} papers[/green]"
-                )
+
+        if new_from_scopus:
+            self.console.print(
+                f"  [green]Found {scholar_count} papers on Scholar + "
+                f"{new_from_scopus} new on Scopus[/green]"
+            )
         else:
             self.console.print(f"  [green]Found {scholar_count} papers[/green]")
 

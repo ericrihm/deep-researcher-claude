@@ -25,22 +25,26 @@ from deep_researcher.state import load_state, save_state
 
 
 def _settings_table(config: Config, provider_name: str, query: str) -> Table:
-    """Render current settings as a table so the user can see what will run."""
-    t = Table(show_header=False, box=None, padding=(0, 2))
-    t.add_column("key", style="cyan")
-    t.add_column("value")
+    """Render current settings with inline hotkeys.
+
+    The hotkey lives in the same row as the field it edits, so the user
+    never has to glance away from a value to find its number.
+    """
+    t = Table(show_header=False, box=None, padding=(0, 1))
+    t.add_column("hotkey", style="cyan", no_wrap=True, justify="right")
+    t.add_column("label", style="bold", no_wrap=True)
+    t.add_column("value", overflow="fold")
     short_q = (query[:70] + "…") if len(query) > 72 else (query or "[dim](not set)[/dim]")
-    t.add_row("Research question", short_q)
-    t.add_row("Provider", provider_name or "[dim](default)[/dim]")
-    t.add_row("Model", config.model or "[dim](default)[/dim]")
-    yr = ""
     if config.start_year or config.end_year:
         yr = f"{config.start_year or '…'} – {config.end_year or '…'}"
     else:
         yr = "[dim]any[/dim]"
-    t.add_row("Year range", yr)
-    t.add_row("Email (polite APIs)", config.email or "[dim](none)[/dim]")
-    t.add_row("Output folder", config.output_dir)
+    t.add_row("[1]", "Research question", short_q)
+    t.add_row("[2]", "Provider", provider_name or "[dim](default)[/dim]")
+    t.add_row("[3]", "Model", config.model or "[dim](default)[/dim]")
+    t.add_row("[4]", "Year range", yr)
+    t.add_row("[5]", "Email", config.email or "[dim](none)[/dim]")
+    t.add_row("[6]", "Output folder", config.output_dir)
     return t
 
 
@@ -285,20 +289,10 @@ def run(console: Console, providers: dict) -> Optional[tuple]:
             border_style="cyan",
         ))
         console.print(
-            "  [green bold]Press Enter to start research[/green bold]  "
-            "[dim]or pick an option to change:[/dim]"
-        )
-        console.print(
-            "  [cyan]1[/cyan] Research question   "
-            "[cyan]2[/cyan] Provider   "
-            "[cyan]3[/cyan] Model   "
-            "[cyan]4[/cyan] Year range"
-        )
-        console.print(
-            "  [cyan]5[/cyan] Email   "
-            "[cyan]6[/cyan] Output folder   "
-            "[cyan]r[/cyan] Replay past run   "
-            "[red]q[/red] Quit"
+            "  [green bold]Enter[/green bold] to start  •  "
+            "[cyan]1-6[/cyan] edit a field  •  "
+            "[cyan]r[/cyan] replay past run  •  "
+            "[red]q[/red] quit"
         )
         try:
             choice = Prompt.ask("  >", default="s", show_default=False).strip().lower()
