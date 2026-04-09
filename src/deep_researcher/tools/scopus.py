@@ -9,6 +9,14 @@ from deep_researcher.tools.base import Tool
 
 SCOPUS_BASE = "https://api.elsevier.com/content/search/scopus"
 
+# Bundled default Elsevier API key — a courtesy so first-time users can
+# search Scopus out of the box without creating an account. Users doing
+# heavy research should grab their own free key at
+# https://dev.elsevier.com/apikey/manage (20k requests/week quota).
+# The key is shared across the Elsevier API family (Scopus +
+# ScienceDirect + author retrieval etc.), so one key unlocks everything.
+_BUNDLED_ELSEVIER_KEY = "fec0b9f63b4934cac901eb7ae6939b67"
+
 _RETRIABLE_STATUSES = {429, 500, 502, 503}
 
 
