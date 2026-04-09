@@ -407,6 +407,28 @@ def main() -> None:
         result = tui.run(console, PROVIDERS)
         if result is None:
             sys.exit(0)
+        if len(result) == 6 and result[0] == "__compare__":
+            _, query, config, provider_name, prov_a, prov_b = result
+            if provider_name == "claude":
+                ok = _setup_claude_provider(
+                    config, console,
+                    verbose=args.verbose,
+                    show_advisory=args.show_advisory,
+                    reset_auth=args.reset_auth,
+                )
+                if not ok:
+                    sys.exit(1)
+            elif provider_name == "chatgpt":
+                ok = _setup_chatgpt_provider(
+                    config, console,
+                    verbose=args.verbose,
+                    reset_auth=args.reset_auth,
+                )
+                if not ok:
+                    sys.exit(1)
+            _setup_elsevier(args, config, console)
+            _run_compare(console, config, query, prov_a, prov_b, open_html=not args.no_open)
+            return
         if len(result) == 4 and result[0] == "__replay__":
             _, folder, config, provider_name = result
             if provider_name == "claude":

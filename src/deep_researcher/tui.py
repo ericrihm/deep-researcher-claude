@@ -149,6 +149,41 @@ def _replay_submenu(console: Console, output_dir: str) -> Optional[str]:
     return runs[idx - 1]["path"]
 
 
+def _compare_submenu(
+    console: Console,
+    providers: dict,
+    current_provider: str,
+) -> tuple[str, str] | None:
+    """Ask the user to pick two providers for comparison. Returns (a, b) or None."""
+    keys = [k for k in providers.keys() if k not in ("chatgpt",)]
+    console.print("\n[bold]Pick two providers to compare[/bold]")
+    for i, k in enumerate(keys, 1):
+        console.print(f"  [cyan]{i}[/cyan]. {k}")
+    console.print("  [dim]Enter two numbers separated by space, or b to go back.[/dim]")
+    try:
+        raw = Prompt.ask("  >", default="b", show_default=False).strip().lower()
+    except (KeyboardInterrupt, EOFError):
+        return None
+    if raw in ("", "b", "back"):
+        return None
+    parts = raw.split()
+    if len(parts) != 2:
+        console.print("[yellow]Enter exactly two numbers.[/yellow]")
+        return None
+    try:
+        idx_a, idx_b = int(parts[0]), int(parts[1])
+    except ValueError:
+        console.print("[yellow]Not valid numbers.[/yellow]")
+        return None
+    if not (1 <= idx_a <= len(keys)) or not (1 <= idx_b <= len(keys)):
+        console.print("[yellow]Out of range.[/yellow]")
+        return None
+    if idx_a == idx_b:
+        console.print("[yellow]Pick two different providers.[/yellow]")
+        return None
+    return (keys[idx_a - 1], keys[idx_b - 1])
+
+
 def _ask_question(console: Console, current: str) -> str:
     console.print(
         "\n[bold]What would you like to research?[/bold]  "
@@ -291,6 +326,7 @@ def run(console: Console, providers: dict) -> Optional[tuple]:
         console.print(
             "  [green bold]Enter[/green bold] to start  •  "
             "[cyan]1-6[/cyan] edit a field  •  "
+            "[cyan]c[/cyan] compare  •  "
             "[cyan]r[/cyan] replay past run  •  "
             "[red]q[/red] quit"
         )
@@ -329,6 +365,23 @@ def run(console: Console, providers: dict) -> Optional[tuple]:
             config.email = _ask_email(console, config.email)
         elif choice == "6":
             config.output_dir = _ask_output_dir(console, config.output_dir)
+        elif choice == "c":
+            if not query:
+                console.print("[yellow]Please set a research question first (option 1).[/yellow]")
+                continue
+            compare_result = _compare_submenu(console, providers, provider_name)
+            if compare_result is not None:
+                prov_a, prov_b = compare_result
+                save_state(
+                    last_query=query,
+                    last_provider=provider_name,
+                    last_model=config.model,
+                    last_start_year=config.start_year,
+                    last_end_year=config.end_year,
+                    last_email=config.email,
+                    last_output_dir=config.output_dir,
+                )
+                return ("__compare__", query, config, provider_name, prov_a, prov_b)
         elif choice == "r":
             picked = _replay_submenu(console, config.output_dir)
             if picked is not None:
