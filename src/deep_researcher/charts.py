@@ -145,15 +145,20 @@ def render_year_histogram(years: dict[int, int]) -> str:
 def render_category_bars(categories: list[tuple[str, int, int]]) -> str:
     if not categories:
         return _EMPTY_SVG
-    row_h = 32
+    # Horizontal layout: full label on its own line, bar below it.
+    # Each row: label line (16px) + bar line (14px paper + 6px cite) + gap
+    label_h = 18
+    bar_h = 14
+    cite_h = 6
+    row_gap = 12
+    row_h = label_h + bar_h + cite_h + row_gap
     top_pad = 10
     bot_pad = 10
     h = row_h * len(categories) + top_pad + bot_pad
     w = 600
-    label_w = 160
-    val_w = 110
-    bar_area_x = label_w
-    bar_area_w = w - label_w - val_w
+    bar_pad_l = 8
+    val_w = 130
+    bar_area_w = w - bar_pad_l - val_w
 
     max_papers = max((n for _, n, _ in categories), default=1) or 1
     max_cites = max((c for _, _, c in categories), default=1) or 1
@@ -165,34 +170,36 @@ def render_category_bars(categories: list[tuple[str, int, int]]) -> str:
     ]
     for i, (name, n_papers, total_cites) in enumerate(categories):
         row_y = top_pad + i * row_h
-        label_y = row_y + row_h / 2 + 4
-        display = name if len(name) <= 22 else name[:21] + "…"
+        # Full category name — left-aligned, no truncation
         parts.append(
-            f'<text x="{label_w - 8}" y="{label_y:.1f}" text-anchor="end" '
-            f'font-family="sans-serif" font-size="12" fill="currentColor">'
-            f'{_e(display)}<title>{_e(name)}</title></text>'
+            f'<text x="{bar_pad_l}" y="{row_y + 13:.1f}" text-anchor="start" '
+            f'font-family="sans-serif" font-size="12" '
+            f'fill="#b0b0bc">{_e(name)}</text>'
         )
+        # Paper count bar
+        bar_y = row_y + label_h
         bar_w = (n_papers / max_papers) * bar_area_w
-        primary_y = row_y + 4
         parts.append(
-            f'<rect x="{bar_area_x}" y="{primary_y:.1f}" '
-            f'width="{bar_w:.1f}" height="14" rx="2" '
+            f'<rect x="{bar_pad_l}" y="{bar_y:.1f}" '
+            f'width="{bar_w:.1f}" height="{bar_h}" rx="2" '
             f'fill="var(--accent, #1f6feb)"><title>{_e(f"{name}: {n_papers} papers")}</title></rect>'
         )
+        # Citation overlay bar
+        cite_y = bar_y + bar_h + 2
         cite_w = (total_cites / max_cites) * bar_area_w if max_cites else 0
-        secondary_y = row_y + 20
         parts.append(
-            f'<rect x="{bar_area_x}" y="{secondary_y:.1f}" '
-            f'width="{cite_w:.1f}" height="6" rx="2" '
+            f'<rect x="{bar_pad_l}" y="{cite_y:.1f}" '
+            f'width="{cite_w:.1f}" height="{cite_h}" rx="2" '
             f'fill="var(--badge-cite, #bf8700)" opacity="0.85">'
             f'<title>{_e(f"{name}: {total_cites} citations")}</title></rect>'
         )
-        end_x = w - val_w + 6
+        # Stats after bar
+        stats_y = bar_y + bar_h / 2 + 4
         parts.append(
-            f'<text x="{end_x}" y="{label_y:.1f}" '
+            f'<text x="{w - val_w + 6}" y="{stats_y:.1f}" '
             f'font-family="sans-serif" font-size="11" '
-            f'fill="currentColor" opacity="0.75">'
-            f'{n_papers} papers · {total_cites:,} cites</text>'
+            f'fill="#b0b0bc">'
+            f'{n_papers} papers \u00b7 {total_cites:,} cites</text>'
         )
     parts.append("</svg>")
     return "".join(parts)
