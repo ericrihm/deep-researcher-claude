@@ -127,3 +127,25 @@ help narrow the search and produce better results. Focus on:
 
 Format: Return ONLY the 3 questions, one per line, numbered 1-3. No preamble.
 """
+
+EXECUTIVE_SUMMARY_PROMPT = """\
+You are writing a 100-150 word executive summary for a literature review on: "{query}"
+
+The review covers {count} papers organized into {cat_count} categories:
+{category_list}
+
+Below are the top {top_n} most-cited papers in the corpus, for grounding:
+{top_papers}
+
+Write a single paragraph (100-150 words) that a busy researcher could read in
+30 seconds to know whether this review is useful to them. Cover:
+  1. The scope of the corpus (how many papers, what time range, which sub-areas)
+  2. The dominant approach or finding that emerges across categories
+  3. The biggest open question or gap
+
+Rules:
+- ONE paragraph. No headings. No bullet points.
+- Do NOT cite specific papers with [N] — this is a high-level summary.
+- Do NOT invent findings that aren't supported by the category list or top papers.
+- Do NOT start with "This review..." or "In recent years..." — get to the point.
+"""
