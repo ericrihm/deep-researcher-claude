@@ -5,8 +5,8 @@
 <p align="center">
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10+-8b5cf6.svg?style=flat-square&labelColor=0f0b1e" alt="Python 3.10+"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-14b8a6.svg?style=flat-square&labelColor=0f0b1e" alt="License: MIT"></a>
-  <img src="https://img.shields.io/badge/version-0.7.0-ec4899.svg?style=flat-square&labelColor=0f0b1e" alt="Version: 0.7.0">
-  <img src="https://img.shields.io/badge/tests-134%20passing-14b8a6.svg?style=flat-square&labelColor=0f0b1e" alt="Tests: 134 passing">
+  <img src="https://img.shields.io/badge/version-0.8.0-ec4899.svg?style=flat-square&labelColor=0f0b1e" alt="Version: 0.8.0">
+  <img src="https://img.shields.io/badge/tests-162%20passing-14b8a6.svg?style=flat-square&labelColor=0f0b1e" alt="Tests: 162 passing">
 </p>
 
 <p align="center">
@@ -600,6 +600,13 @@ deep-researcher "your query" --model gemma4
 ---
 
 ## Changelog
+
+### 0.8.0
+
+- **New: Elsevier/Scopus source.** Papers are now searched on Scopus alongside Google Scholar. Ships with a bundled API key; bring your own for heavy use.
+- **New: ChatGPT OAuth provider.** Use your ChatGPT subscription with `--provider chatgpt` — PKCE browser login, automatic token refresh, no API key needed.
+- **Improved: LLM prompts.** Tighter synthesis instructions reduce hallucination, enforce active voice, and produce more evenly-sized categories.
+- **Improved: HTML report styling.** Full category labels in charts (no truncation), cleaner section spacing, pill-badge metadata strip, bracketless superscript citations.
 
 ### 0.7.0
 

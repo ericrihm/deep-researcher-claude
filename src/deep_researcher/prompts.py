@@ -22,6 +22,10 @@ Rules:
 - Every paper number must appear in exactly one category
 - 3-6 categories total
 - Category names should be specific (e.g., "Vision-Based Damage Detection", not "Methods")
+- Category names must be noun phrases, NOT verbs or actions.
+  Bad: "Using CNNs for Detection", "Applying Transfer Learning"
+  Good: "CNN-Based Defect Detection", "Transfer Learning Approaches"
+- Aim for similarly sized categories — avoid one category with 80% of papers and others with 2-3
 - No explanation needed — just the categories and paper numbers
 """
 
@@ -48,6 +52,8 @@ Rules:
 - Every old category must appear in exactly one MERGE line
 - Use the old category names exactly as listed above
 - Final category names should be descriptive (not generic like "Other")
+- Prefer merging the smallest categories first into larger ones
+- A final category should have at least 5 papers when possible
 """
 
 CATEGORY_SYNTHESIS_PROMPT = """\
@@ -61,7 +67,7 @@ This section covers the category: **{category}** ({count} papers)
 ## Write this section. Reference papers by [number].
 
 **What this group does:**
-Write a paragraph (4-6 sentences) explaining the shared approach/theme.
+Write a paragraph (3-5 sentences) explaining the shared approach/theme.
 Reference individual papers: e.g., "Smith et al. [1] introduced X. Jones et al. [2] extended this by Y."
 
 **Key methods:**
@@ -71,7 +77,9 @@ For each method, cite which paper(s) used it.
 **Main findings:**
 Write a paragraph on collective findings. Include specific results ONLY if the \
 abstract explicitly states them (e.g., accuracy percentages, performance metrics). \
-Do NOT infer, generalize, or fabricate results that are not in the abstracts.
+Do NOT infer, generalize, or fabricate results that are not in the abstracts. \
+If a paper's abstract does not mention specific metrics, write \
+"The abstract does not report specific metrics" rather than omitting the paper or guessing.
 
 **Limitations & gaps (your analysis):**
 Write YOUR OWN analysis of common weaknesses and gaps across this group. \
@@ -81,13 +89,15 @@ or "This group does not address..."
 
 | Ref | Paper | Year | Method | Key Finding | Citations |
 |-----|-------|------|--------|-------------|-----------|
-(Include EVERY paper listed above in the table)
+(Include EVERY paper listed above in the table. Sort rows by Year, newest first. \
+If a paper has no citation count, write "-" not "0".)
 
 ## CRITICAL RULES
 - ONLY state what the abstracts explicitly say. If a metric is not in the abstract, do NOT invent it.
 - When citing [N], the claim MUST come from that paper's abstract above. Verify before writing.
 - The Limitations section is YOUR analysis — do NOT fake-attribute observations to papers.
 - Include ALL papers from this category in the table.
+- Write in active voice. Avoid passive constructions like "was proposed" or "was found to be".
 - Be direct. No filler. No "In recent years..."
 - Do NOT write references or cross-category analysis — just this one section.
 """
@@ -101,11 +111,13 @@ Now write ONLY these sections:
 
 #### Cross-Category Patterns
 What patterns emerge across categories? Which are converging? \
-What contradictions exist? Which papers bridge multiple categories?
+What contradictions exist? Which papers bridge multiple categories? \
+Name at least 3 specific paper numbers when discussing each pattern.
 
 #### Gaps & Opportunities
 Be specific. Name concrete research questions nobody has addressed. \
-Point to specific method/domain combinations that haven't been tried.
+Point to specific method/domain combinations that haven't been tried. \
+For each gap, explain WHY it matters — don't just list missing topics.
 
 #### Open Access Papers
 List any papers with free full-text URLs mentioned above.
@@ -119,13 +131,15 @@ Rules:
 CLARIFY_PROMPT = """\
 You are a research assistant helping to refine a research question before searching academic databases.
 
-Given the user's research topic, generate exactly 3 short, focused clarifying questions that would \
-help narrow the search and produce better results. Focus on:
+Given the user's research topic, generate exactly 2 short, focused clarifying questions that would \
+help narrow the search and produce better results. Focus on the most important dimensions:
 - Specific subfield or application domain
-- Time period or recency preferences
 - Methodological focus (theoretical, empirical, computational, etc.)
 
-Format: Return ONLY the 3 questions, one per line, numbered 1-3. No preamble.
+Frame questions as quick multiple-choice when possible. \
+Example: "Which aspect matters most? (a) clinical trials  (b) computational models  (c) both equally"
+
+Format: Return ONLY the 2 questions, one per line, numbered 1-2. No preamble.
 """
 
 EXECUTIVE_SUMMARY_PROMPT = """\
@@ -144,6 +158,10 @@ Write a single paragraph (100-150 words) that a busy researcher could read in
   3. The biggest open question or gap
 
 Rules:
+- Start with the most surprising or important finding from the corpus — NOT with \
+  a description of what the review contains
+- Use concrete numbers from the corpus \
+  (e.g., "62 of 100 papers use transformer architectures", "only 3 papers test on real-world data")
 - ONE paragraph. No headings. No bullet points.
 - Do NOT cite specific papers with [N] — this is a high-level summary.
 - Do NOT invent findings that aren't supported by the category list or top papers.
