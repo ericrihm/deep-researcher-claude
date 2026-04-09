@@ -230,6 +230,228 @@ class Orchestrator:
             self.last_report_paths = paths
         return state.report
 
+    def compare_research(
+        self,
+        query: str,
+        provider_a: str,
+        provider_b: str,
+        providers: dict[str, dict[str, str]],
+    ) -> tuple[str, str]:
+        """Run search+enrich once, then synthesize with two providers in parallel.
+
+        Returns (report_a, report_b). Each provider's outputs are saved into
+        subdirectories: <output_folder>/provider_a/ and <output_folder>/provider_b/.
+        A top-level metadata.json records the comparison. A compare.html shows
+        a side-by-side diff.
+
+        Partial-failure tolerance: if one provider fails, the other's results
+        are still saved.
+        """
+        self.console.print(Panel(
+            f"[bold]{query}[/bold]\n"
+            f"[dim]Comparing: {provider_a} vs {provider_b}[/dim]",
+            title="Deep Researcher -- Compare",
+            border_style="magenta",
+        ))
+
+        state = PipelineState(query=query)
+        self._output_folder = get_output_folder(query, self.config.output_dir)
+
+        # Phase 1: Search (shared)
+        self.console.print("\n[bold blue]Phase 1: Searching Google Scholar + Scopus...[/bold blue]")
+        with self.console.status("[cyan]Searching academic databases...", spinner="dots"):
+            state = self._run_search(state)
+
+        if not state.papers:
+            self.console.print("[yellow]No papers found.[/yellow]")
+            return ("No papers found.", "No papers found.")
+
+        # Phase 2: Enrich (shared)
+        self.console.print(f"\n[bold blue]Phase 2: Enriching {len(state.papers)} papers...[/bold blue]")
+        with self.console.status("[cyan]Fetching metadata...", spinner="dots"):
+            state = self._run_enrichment(state)
+
+        # Checkpoint
+        os.makedirs(self._output_folder, exist_ok=True)
+        if state.papers:
+            try:
+                save_checkpoint(state.papers, self._output_folder)
+            except Exception:
+                logger.debug("Checkpoint save failed", exc_info=True)
+
+        # Phase 3: Synthesize with both providers in parallel
+        self.console.print(f"\n[bold blue]Phase 3: Synthesizing with {provider_a} and {provider_b}...[/bold blue]")
+
+        def _synth_with_provider(prov_name: str, prov_preset: dict) -> PipelineState:
+            """Build a fresh Orchestrator with a different provider config, run synthesis."""
+            from copy import deepcopy
+            prov_config = deepcopy(self.config)
+            prov_config.base_url = prov_preset["base_url"]
+            prov_config.api_key = prov_preset.get("api_key", "")
+            prov_config.model = prov_preset["default_model"]
+            if prov_name == "claude":
+                prov_config.provider_kind = "claude_agent"
+            elif prov_name == "chatgpt":
+                prov_config.provider_kind = "chatgpt_oauth"
+            else:
+                prov_config.provider_kind = "openai"
+
+            prov_llm = make_llm_client(prov_config)
+            # Build fresh LLM-dependent tools for this provider
+            prov_orch = Orchestrator.__new__(Orchestrator)
+            prov_orch.config = prov_config
+            prov_orch.console = self.console
+            prov_orch._cancel = self._cancel
+            prov_orch._output_folder = self._output_folder
+            prov_orch.last_report_paths = {}
+            prov_orch._search_tool = self._search_tool
+            prov_orch._scopus_tool = self._scopus_tool
+            prov_orch._enrichment_tool = self._enrichment_tool
+            prov_orch._clarify_tool = ClarifyTool(llm=prov_llm)
+            prov_orch._categorize_tool = CategorizeTool(llm=prov_llm)
+            prov_orch._synthesize_tool = SynthesisTool(llm=prov_llm)
+            prov_orch._cross_analysis_tool = CrossAnalysisTool(llm=prov_llm)
+            prov_orch._fallback_tool = FallbackSynthesisTool(llm=prov_llm)
+            prov_orch._exec_summary_tool = ExecutiveSummaryTool(llm=prov_llm)
+            return prov_orch._run_synthesis(state)
+
+        preset_a = providers.get(provider_a, {})
+        preset_b = providers.get(provider_b, {})
+
+        state_a: PipelineState | None = None
+        state_b: PipelineState | None = None
+        error_a: str = ""
+        error_b: str = ""
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            future_a = pool.submit(_synth_with_provider, provider_a, preset_a)
+            future_b = pool.submit(_synth_with_provider, provider_b, preset_b)
+
+            try:
+                state_a = future_a.result(timeout=CATEGORY_SYNTHESIS_TIMEOUT * 2)
+                self.console.print(f"  [green]{provider_a} synthesis complete[/green]")
+            except Exception as e:
+                error_a = str(e)
+                self.console.print(f"  [red]{provider_a} synthesis failed: {e}[/red]")
+
+            try:
+                state_b = future_b.result(timeout=CATEGORY_SYNTHESIS_TIMEOUT * 2)
+                self.console.print(f"  [green]{provider_b} synthesis complete[/green]")
+            except Exception as e:
+                error_b = str(e)
+                self.console.print(f"  [red]{provider_b} synthesis failed: {e}[/red]")
+
+        report_a = state_a.report if state_a else f"Synthesis failed: {error_a}"
+        report_b = state_b.report if state_b else f"Synthesis failed: {error_b}"
+
+        # Save each provider's outputs into subdirectories
+        from deep_researcher.display import save_results as _save_results
+
+        os.makedirs(self._output_folder, exist_ok=True)
+
+        for prov_name, prov_state in [(provider_a, state_a), (provider_b, state_b)]:
+            if prov_state is None:
+                continue
+            sub_folder = os.path.join(self._output_folder, prov_name)
+            _save_results(self.console, prov_state, self.config.output_dir, sub_folder)
+
+        # Top-level compare metadata
+        import json as _json
+        from datetime import datetime as _dt
+        meta_path = os.path.join(self._output_folder, "metadata.json")
+        with open(meta_path, "w", encoding="utf-8") as f:
+            _json.dump({
+                "query": query,
+                "mode": "compare",
+                "providers": [provider_a, provider_b],
+                "generated": _dt.now().isoformat(),
+                "total_papers": len(state.papers),
+                "provider_a_success": state_a is not None,
+                "provider_b_success": state_b is not None,
+            }, f, indent=2)
+
+        # Phase 4: Comparison analysis
+        if state_a and state_b:
+            self.console.print("\n[bold blue]Phase 4: Comparing outputs...[/bold blue]")
+            comparison_text = self._run_comparison(
+                query, report_a, report_b,
+                provider_a, provider_b,
+                len(state.papers),
+                providers,
+            )
+            if comparison_text:
+                from deep_researcher.html_compare import build_compare_html
+                compare_path = os.path.join(self._output_folder, "compare.html")
+                try:
+                    html_doc = build_compare_html(
+                        query, report_a, report_b,
+                        provider_a, provider_b,
+                        comparison_text,
+                    )
+                    with open(compare_path, "w", encoding="utf-8") as f:
+                        f.write(html_doc)
+                    self.console.print(f"  [green]Comparison saved:[/green] [blue]{compare_path}[/blue]")
+                except Exception as e:
+                    logger.warning("Failed to write compare.html: %s", e)
+
+        self.last_report_paths = {
+            "compare_folder": self._output_folder,
+            "html": os.path.join(self._output_folder, "compare.html"),
+        }
+        return (report_a, report_b)
+
+    def _run_comparison(
+        self,
+        query: str,
+        report_a: str,
+        report_b: str,
+        provider_a: str,
+        provider_b: str,
+        paper_count: int,
+        providers: dict[str, dict[str, str]],
+    ) -> str:
+        """Run the comparison analysis using the more capable provider."""
+        capability_order = ["claude", "anthropic", "openai", "openrouter",
+                            "chatgpt", "groq", "deepseek", "together",
+                            "ollama", "lmstudio"]
+        best_provider = provider_a
+        for prov in capability_order:
+            if prov in (provider_a, provider_b):
+                best_provider = prov
+                break
+
+        from copy import deepcopy
+        comp_config = deepcopy(self.config)
+        best_preset = providers.get(best_provider, {})
+        if best_preset:
+            comp_config.base_url = best_preset.get("base_url", comp_config.base_url)
+            comp_config.api_key = best_preset.get("api_key", comp_config.api_key)
+            comp_config.model = best_preset.get("default_model", comp_config.model)
+        if best_provider == "claude":
+            comp_config.provider_kind = "claude_agent"
+        elif best_provider == "chatgpt":
+            comp_config.provider_kind = "chatgpt_oauth"
+        else:
+            comp_config.provider_kind = "openai"
+
+        comp_llm = make_llm_client(comp_config)
+
+        from deep_researcher.tools.comparison import ComparisonTool
+        tool = ComparisonTool(llm=comp_llm)
+        result = tool.safe_execute(
+            query=query,
+            report_a=report_a,
+            report_b=report_b,
+            provider_a=provider_a,
+            provider_b=provider_b,
+            paper_count=paper_count,
+        )
+        if result.text:
+            self.console.print(f"  [green]Comparison analysis complete (via {best_provider})[/green]")
+        else:
+            self.console.print("  [yellow]Comparison analysis produced no output[/yellow]")
+        return result.text
+
     # ------------------------------------------------------------------
     # Phase implementations (each calls tools, returns new state)
     # ------------------------------------------------------------------
