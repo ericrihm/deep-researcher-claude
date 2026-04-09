@@ -34,16 +34,24 @@ def print_summary(console: Console, state: PipelineState) -> None:
     console.print(table)
 
 
-def save_results(console: Console, state: PipelineState, output_dir: str, folder: str | None = None) -> None:
+def save_results(
+    console: Console,
+    state: PipelineState,
+    output_dir: str,
+    folder: str | None = None,
+) -> dict[str, str] | None:
     if not state.report.strip():
-        return
+        return None
     try:
         paths = save_report(
             state.query, state.report, state.papers,
             output_dir, folder=folder,
+            synthesis_papers=state.synthesis_papers or None,
         )
         console.print(f"\n[green bold]Files saved:[/green bold]")
         for label, path in paths.items():
             console.print(f"  {label}: [blue]{path}[/blue]")
+        return paths
     except Exception as e:
         console.print(f"[red]Error saving report: {e}[/red]")
+        return None

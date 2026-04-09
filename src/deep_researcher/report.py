@@ -7,6 +7,7 @@ import re
 from collections import Counter
 from datetime import datetime
 
+from deep_researcher.html_report import build_html_report
 from deep_researcher.models import Paper
 
 
@@ -16,6 +17,7 @@ def save_report(
     papers: dict[str, Paper],
     output_dir: str,
     folder: str | None = None,
+    synthesis_papers: list[Paper] | None = None,
 ) -> dict[str, str]:
     if not folder:
         slug = _make_slug(query)
@@ -93,6 +95,23 @@ def save_report(
             row["authors"] = "; ".join(row.get("authors", []))
             writer.writerow(row)
 
+    # Styled HTML report (self-contained, inline CSS/JS)
+    html_path = os.path.join(folder, "report.html")
+    try:
+        # If caller did not pass synthesis_papers, fall back to all papers
+        # sorted by citation count so reference numbers are still deterministic.
+        syn = synthesis_papers
+        if syn is None:
+            syn = sorted(
+                [p for p in papers.values() if p.title],
+                key=lambda p: (-(p.citation_count or 0), -(p.year or 0)),
+            )
+        html_doc = build_html_report(query, report_text, syn, papers)
+        with open(html_path, "w", encoding="utf-8") as f:
+            f.write(html_doc)
+    except Exception as e:
+        html_path = f"(failed: {e})"
+
     # Research metadata
     meta_path = os.path.join(folder, "metadata.json")
     with open(meta_path, "w", encoding="utf-8") as f:
@@ -106,6 +125,7 @@ def save_report(
 
     return {
         "report": report_path,
+        "html": html_path,
         "bibtex": bibtex_path,
         "papers (JSON)": papers_path,
         "papers (CSV)": csv_path,
