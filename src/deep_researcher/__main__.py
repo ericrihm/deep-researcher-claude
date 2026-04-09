@@ -167,6 +167,11 @@ def main() -> None:
         description="An agentic academic research assistant that searches multiple databases and produces literature reviews.",
     )
     parser.add_argument("query", nargs="?", help="Research question to investigate")
+    parser.add_argument(
+        "--replay",
+        metavar="FOLDER",
+        help="Re-run synthesis on an existing output folder without re-searching",
+    )
     parser.add_argument("--provider", choices=list(PROVIDERS.keys()), help="LLM provider (auto-configures base URL and model)")
     parser.add_argument("--model", default=None, help="LLM model name")
     parser.add_argument("--base-url", default=None, help="OpenAI-compatible API base URL")
@@ -182,6 +187,9 @@ def main() -> None:
     parser.add_argument("--show-advisory", action="store_true", help="Re-show the Claude OAuth policy advisory (normally printed once)")
     parser.add_argument("--version", action="version", version=f"deep-researcher {__version__}")
     args = parser.parse_args()
+
+    if args.replay and args.query:
+        parser.error("--replay and a query are mutually exclusive")
 
     if args.verbose:
         import logging
@@ -201,6 +209,37 @@ def main() -> None:
     # don't want to memorize flags (or quote their query correctly on
     # PowerShell) have a path that Just Works.
     # --------------------------------------------------------------
+    if args.replay and not args.query:
+        config = Config()
+        if args.provider:
+            preset = PROVIDERS[args.provider]
+            config.base_url = preset["base_url"]
+            config.api_key = preset["api_key"]
+            config.model = preset["default_model"]
+            if args.provider in ("ollama", "lmstudio"):
+                config.timeout = 300
+            if args.provider == "claude":
+                ok = _setup_claude_provider(
+                    config, console,
+                    verbose=args.verbose,
+                    show_advisory=args.show_advisory,
+                    reset_auth=args.reset_auth,
+                )
+                if not ok:
+                    sys.exit(1)
+        if args.model:
+            config.model = args.model
+        if args.base_url:
+            config.base_url = args.base_url
+        if args.api_key:
+            config.api_key = args.api_key
+        if args.output:
+            config.output_dir = args.output
+        if args.email:
+            config.email = args.email
+        _run_replay(console, config, args.replay, open_html=not args.no_open)
+        return
+
     if not args.query:
         from deep_researcher import tui
         result = tui.run(console, PROVIDERS)
@@ -311,6 +350,48 @@ def _run_pipeline(console: Console, config: Config, query: str, *, open_html: bo
                     console.print(f"[yellow]Could not auto-open HTML report: {e}[/yellow]")
     except KeyboardInterrupt:
         console.print("\n[yellow]Research interrupted.[/yellow]")
+        sys.exit(1)
+    finally:
+        signal.signal(signal.SIGINT, prev_handler)
+
+
+def _run_replay(console: Console, config: Config, folder: str, *, open_html: bool = True) -> None:
+    """Replay synthesis on an existing output folder."""
+    if config.provider_kind == "claude_agent":
+        console.print(f"[dim]Using {config.model} (subscription auth).[/dim]")
+    else:
+        console.print(f"[dim]Model: {config.model} @ {config.base_url}[/dim]")
+
+    orchestrator = Orchestrator(config)
+
+    def _on_interrupt(signum, frame):
+        orchestrator.cancel()
+
+    prev_handler = signal.signal(signal.SIGINT, _on_interrupt)
+    try:
+        report = orchestrator.replay(folder)
+        if report:
+            console.print("\n")
+            try:
+                from rich.markdown import Markdown
+                console.print(Markdown(report))
+            except Exception:
+                console.print(report)
+            html_path = orchestrator.last_report_paths.get("html")
+            if html_path and open_html and not html_path.startswith("(failed"):
+                import webbrowser
+                try:
+                    webbrowser.open("file://" + os.path.abspath(html_path))
+                except Exception as e:
+                    console.print(f"[yellow]Could not auto-open HTML report: {e}[/yellow]")
+    except FileNotFoundError as e:
+        console.print(f"[red]Replay failed:[/red] {e}")
+        sys.exit(1)
+    except ValueError as e:
+        console.print(f"[red]Replay failed:[/red] {e}")
+        sys.exit(1)
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Replay interrupted.[/yellow]")
         sys.exit(1)
     finally:
         signal.signal(signal.SIGINT, prev_handler)
