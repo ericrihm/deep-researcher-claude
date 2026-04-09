@@ -67,7 +67,7 @@ def _inline(text: str, paper_titles: dict[int, str]) -> str:
             parts.append(
                 f'<a class="cite" href="#ref-{idx}" title="{title_attr}">{idx}</a>'
             )
-        return "[" + ", ".join(parts) + "]"
+        return "".join(parts)
 
     text = _CITE_RE.sub(_cite_sub, text)
     text = _BOLD_RE.sub(r"<strong>\1</strong>", text)
@@ -357,7 +357,7 @@ main { padding: 2.5rem 3rem 5rem; min-width: 0; }
 .meta-card .meta-row { display: flex; flex-wrap: wrap; gap: 1rem 1.5rem; color: var(--muted); font-size: 14px; }
 .meta-card .meta-row span strong { color: var(--fg); font-weight: 600; }
 h1, h2, h3, h4, h5 { font-family: var(--sans); line-height: 1.3; }
-h2 { margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid var(--border); font-size: 1.7rem; color: var(--accent); font-weight: 600; }
+h2 { margin-top: 2rem; font-size: 1.15em; color: #b0b8c8; font-weight: 500; border-bottom: 1px solid #2a2a35; padding-bottom: 8px; border-top: none; padding-top: 0; }
 h2:first-of-type { border-top: none; padding-top: 0; }
 h3 { margin-top: 2.5rem; font-size: 1.45rem; color: var(--accent); font-weight: 600; padding-bottom: .35rem; border-bottom: 1px solid var(--border); }
 h4 { margin-top: 2rem; font-size: 1.2rem; color: var(--fg); font-weight: 600; }
@@ -367,13 +367,11 @@ ul, ol { max-width: 720px; }
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 a.cite {
-  display: inline-block; font-weight: 500; font-size: .72em;
-  color: var(--muted); background: transparent;
-  padding: 0 .3em; border: 1px solid var(--border); border-radius: 3px;
-  text-decoration: none; vertical-align: super; line-height: 1.4;
-  margin: 0 1px; transition: color .12s, border-color .12s;
+  font-size: 0.7em; color: #6a7a8a; vertical-align: super;
+  text-decoration: none; line-height: 1;
+  margin: 0 1px; transition: color .12s;
 }
-a.cite:hover { color: var(--accent); border-color: var(--accent); background: transparent; }
+a.cite:hover { color: #8ab4f8; }
 .table-wrap { overflow-x: auto; margin: 1.5rem 0; border: 1px solid var(--border); border-radius: 8px; }
 table { border-collapse: collapse; width: 100%; font-family: var(--sans); font-size: 0.9em; }
 th, td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
@@ -522,6 +520,45 @@ figure.chart figcaption {
 }
 figure.chart svg { display: block; width: 100%; height: auto; }
 figure.chart svg rect:hover { opacity: 0.7; }
+/* Section spacing: chapter breaks between chart area and categories */
+.charts + h3, details.charts + h3, .exec-summary + h3 {
+  margin-top: 4em;
+  padding-top: 2em;
+  border-top: 1px solid #2a2a35;
+}
+/* Category section separators */
+h3 + h3, h3 ~ h3 {
+  margin-top: 4em;
+  padding-top: 2em;
+  border-top: none;
+}
+/* Divider between category sections */
+.category-divider {
+  border: none;
+  border-top: 1px solid #2a2a35;
+  margin: 4em 0 2em;
+}
+/* Superlabel + H1 tightening */
+.category-label { margin-bottom: 4px; }
+.category-label + h1 { margin-top: 0; }
+h1 + h2 { margin-top: 2em; }
+/* Coverage metadata strip */
+.coverage-meta {
+  font-size: 0.88em;
+  color: #8a8a9a;
+  padding: 4px 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.coverage-meta .pill {
+  border: 1px solid #333;
+  border-radius: 12px;
+  padding: 4px 12px;
+  font-size: 0.82em;
+  background: #232330;
+  white-space: nowrap;
+}
 @media print {
   details.charts { break-inside: avoid; }
   details.charts:not([open]) > *:not(summary) { display: block !important; }
@@ -695,13 +732,13 @@ def build_html_report(
       <h1>{title_text}</h1>
       <div class="meta-row">
         <span><strong>Generated:</strong> {generated}</span>
-        <span><strong>Papers:</strong> {len(all_papers)}</span>
-        <span><strong>In synthesis:</strong> {len(synthesis_papers)}</span>
-        <span><strong>Open access:</strong> {oa_count}</span>
-        <span><strong>Year range:</strong> {yr_range}</span>
       </div>
-      <div class="meta-row" style="margin-top:.5rem;">
-        <span><strong>Sources:</strong> {html.escape(sources_str)}</span>
+      <div class="coverage-meta" style="margin-top:.5rem;">
+        <span class="pill">{len(all_papers)} papers</span>
+        <span class="pill">{html.escape(sources_str)}</span>
+        <span class="pill">{yr_range}</span>
+        <span class="pill">{oa_count} open access</span>
+        <span class="pill">{len(synthesis_papers)} in synthesis</span>
       </div>
     </div>
     {exec_summary_html}
