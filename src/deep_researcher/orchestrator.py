@@ -49,6 +49,7 @@ class Orchestrator:
         self.console = Console()
         self._cancel = threading.Event()
         self._output_folder: str = ""
+        self.last_report_paths: dict[str, str] = {}
 
         # All tools (Principle 1: tools as unit of action)
         llm = make_llm_client(config)
@@ -141,7 +142,9 @@ class Orchestrator:
         state = self._run_synthesis(state)
 
         print_summary(self.console, state)
-        save_results(self.console, state, self.config.output_dir, self._output_folder or None)
+        paths = save_results(self.console, state, self.config.output_dir, self._output_folder or None)
+        if paths:
+            self.last_report_paths = paths
         return state.report
 
     # ------------------------------------------------------------------

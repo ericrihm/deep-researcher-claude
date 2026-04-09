@@ -176,6 +176,7 @@ def main() -> None:
     parser.add_argument("--start-year", type=int, default=None, help="Filter papers published on or after this year")
     parser.add_argument("--end-year", type=int, default=None, help="Filter papers published on or before this year")
     parser.add_argument("--interactive", action="store_true", help="Ask clarifying questions before researching")
+    parser.add_argument("--no-open", action="store_true", help="Do not auto-open the HTML report in a browser when done")
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
     parser.add_argument("--reset-auth", action="store_true", help="Forget any stored auth state for the selected provider and re-onboard on next run")
     parser.add_argument("--show-advisory", action="store_true", help="Re-show the Claude OAuth policy advisory (normally printed once)")
@@ -216,7 +217,7 @@ def main() -> None:
             )
             if not ok:
                 sys.exit(1)
-        _run_pipeline(console, config, query)
+        _run_pipeline(console, config, query, open_html=not args.no_open)
         return
 
     # --------------------------------------------------------------
@@ -270,10 +271,10 @@ def main() -> None:
                           f"PowerShell: [cyan]$env:OPENAI_API_KEY = \"YOUR_KEY\"[/cyan]")
             sys.exit(1)
 
-    _run_pipeline(console, config, args.query)
+    _run_pipeline(console, config, args.query, open_html=not args.no_open)
 
 
-def _run_pipeline(console: Console, config: Config, query: str) -> None:
+def _run_pipeline(console: Console, config: Config, query: str, *, open_html: bool = True) -> None:
     """Shared pipeline runner for both the flag path and the TUI path."""
     if config.provider_kind == "claude_agent":
         console.print(f"[dim]Using {config.model} (subscription auth).[/dim]")
@@ -300,6 +301,14 @@ def _run_pipeline(console: Console, config: Config, query: str) -> None:
                 console.print(Markdown(report))
             except Exception:
                 console.print(report)
+            # Auto-open the HTML report in the default browser
+            html_path = orchestrator.last_report_paths.get("html")
+            if html_path and open_html and not html_path.startswith("(failed"):
+                import webbrowser
+                try:
+                    webbrowser.open("file://" + os.path.abspath(html_path))
+                except Exception as e:
+                    console.print(f"[yellow]Could not auto-open HTML report: {e}[/yellow]")
     except KeyboardInterrupt:
         console.print("\n[yellow]Research interrupted.[/yellow]")
         sys.exit(1)
