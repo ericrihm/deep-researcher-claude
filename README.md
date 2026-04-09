@@ -5,12 +5,13 @@
 <p align="center">
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10+-8b5cf6.svg?style=flat-square&labelColor=0f0b1e" alt="Python 3.10+"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-14b8a6.svg?style=flat-square&labelColor=0f0b1e" alt="License: MIT"></a>
-  <img src="https://img.shields.io/badge/version-0.8.0-ec4899.svg?style=flat-square&labelColor=0f0b1e" alt="Version: 0.8.0">
+  <img src="https://img.shields.io/badge/version-0.9.0-ec4899.svg?style=flat-square&labelColor=0f0b1e" alt="Version: 0.9.0">
   <img src="https://img.shields.io/badge/tests-206%20passing-14b8a6.svg?style=flat-square&labelColor=0f0b1e" alt="Tests: 206 passing">
 </p>
 
 <p align="center">
   <a href="#quick-start">Quick Start</a> &middot;
+  <a href="#mcp-server">MCP Server</a> &middot;
   <a href="#how-it-works">How It Works</a> &middot;
   <a href="#html-report">HTML Report</a> &middot;
   <a href="#sample-output">Sample Output</a> &middot;
@@ -19,7 +20,7 @@
 
 ---
 
-> **Fork notice.** This is a fork of [jackswl/deep-researcher](https://github.com/jackswl/deep-researcher) that adds an interactive TUI (no shell quoting required), a `--provider claude` option using Claude subscription OAuth via `claude login` (no API key), a styled self-contained **HTML report** that auto-opens in your browser, and Windows/PowerShell encoding fixes. The Google Scholar pipeline, OpenAlex enrichment, and synthesis architecture are all upstream's work — go star the [original repo](https://github.com/jackswl/deep-researcher).
+> **Fork notice.** This is a fork of [jackswl/deep-researcher](https://github.com/jackswl/deep-researcher) that adds an interactive TUI, `--provider claude` / `--provider chatgpt` (subscription OAuth, no API key), a styled **HTML report**, an **MCP server** (Claude Desktop / Claude Code can run research mid-conversation), **dual-provider comparison** (`--compare`), Scopus search, and Windows/PowerShell encoding fixes. The Google Scholar pipeline, OpenAlex enrichment, and synthesis architecture are upstream's work — go star the [original repo](https://github.com/jackswl/deep-researcher).
 
 ---
 
@@ -255,13 +256,15 @@ The TUI offers the same feature via the **c** hotkey in the main menu.
 
 ### Use as an MCP server (Claude Desktop / Claude Code)
 
-Deep Researcher can run as an [MCP server](https://modelcontextprotocol.io), letting Claude search papers and write literature reviews mid-conversation:
+Deep Researcher runs as an [MCP server](https://modelcontextprotocol.io) so Claude can search academic papers and write literature reviews during a conversation — no terminal needed.
+
+**Install with MCP support:**
 
 ```bash
-pip install deep-researcher[mcp]
+pip install -e ".[mcp]"
 ```
 
-Add to your Claude Desktop config (`claude_desktop_config.json`):
+**Claude Desktop** — add to `claude_desktop_config.json` (macOS: `~/Library/Application Support/Claude/`, Windows: `%APPDATA%/Claude/`):
 
 ```json
 {
@@ -273,7 +276,7 @@ Add to your Claude Desktop config (`claude_desktop_config.json`):
 }
 ```
 
-Or for Claude Code (`.claude/settings.json`):
+**Claude Code** — add to `.claude/settings.json` in your project or `~/.claude/settings.json` globally:
 
 ```json
 {
@@ -285,15 +288,44 @@ Or for Claude Code (`.claude/settings.json`):
 }
 ```
 
-**Available tools:**
+Restart Claude after editing the config. You should see "deep-researcher" in your available tools.
 
-| Tool | What it does |
+**What Claude can do with it:**
+
+| Tool | What it does | Speed |
+|---|---|---|
+| `research` | Full pipeline: search 100 papers, enrich metadata, write a structured literature review with categories, cross-analysis, and numbered references | 2-5 min |
+| `search_papers` | Search + enrich only — returns paper titles, authors, years, abstracts, DOIs, citation counts. No synthesis. Great for quick lookups and iterative exploration | 30-60s |
+| `synthesize` | Re-run LLM synthesis on a previous run's papers.json (replay mode). Try a different model or provider without re-searching | 1-3 min |
+| `compare` | Dual-provider comparison — search once, synthesize with two LLMs in parallel, get a structured diff | 3-8 min |
+| `list_runs` | Browse your previous research output folders with metadata | instant |
+
+**Resources** (read-only access to past research):
+
+| URI | Returns |
 |---|---|
-| `research` | Full pipeline: search + enrich + synthesize (2-5 min) |
-| `search_papers` | Search only, return paper metadata (30-60s) |
-| `synthesize` | Re-run synthesis on existing papers.json |
-| `compare` | Dual-provider side-by-side comparison |
-| `list_runs` | Browse previous research output folders |
+| `research://runs` | JSON list of all output folders |
+| `research://run/{folder}/report.md` | Markdown report from a specific run |
+| `research://run/{folder}/papers.json` | Paper metadata from a specific run |
+
+**Prompts** (pre-built conversation starters):
+
+| Prompt | What it does |
+|---|---|
+| `literature_review` | Guides Claude through a full research workflow on your topic |
+| `find_papers` | Quick paper search with top-10 summary and option to synthesize |
+
+**Example conversation with Claude:**
+
+> **You:** Find me recent papers on transformer architectures for protein folding
+>
+> **Claude:** *[calls search_papers with start_year=2022]* I found 83 papers. The top-cited ones are... Want me to run a full synthesis?
+>
+> **You:** Yes, use Claude for the synthesis
+>
+> **Claude:** *[calls research with provider="claude"]* Here's the structured review with 6 categories...
+
+The MCP server uses the same config chain as the CLI (env vars, `~/.deep-researcher/config.json`). If you use `--provider claude`, make sure you've run `claude login` first.
 
 ### Run with Ollama (local, free, private)
 
@@ -555,19 +587,23 @@ deep-researcher "your research question"  # one-shot with a query
 deep-researcher "your query" [options]
 
 Options:
-  --provider PROVIDER    LLM provider (ollama, claude, openai, groq, etc.)
-  --model MODEL          LLM model name
-  --base-url URL         OpenAI-compatible API URL
-  --api-key KEY          API key
-  --start-year YEAR      Filter papers from this year onward
-  --end-year YEAR        Filter papers up to this year
-  --interactive          Ask clarifying questions before researching
-  --output DIR           Output directory (default: ./output)
-  --email EMAIL          Email for polite API access to OpenAlex/CrossRef
-  --no-open              Do not auto-open the HTML report in a browser
-  --verbose              Enable debug logging
-  --reset-auth           Clear stored auth state for the selected provider
-  --show-advisory        Re-show the Claude OAuth policy notice
+  --provider PROVIDER          LLM provider (ollama, claude, openai, groq, etc.)
+  --model MODEL                LLM model name
+  --compare PROV_A PROV_B      Compare two providers on the same corpus
+  --replay FOLDER              Re-run synthesis on an existing output folder
+  --base-url URL               OpenAI-compatible API URL
+  --api-key KEY                API key
+  --start-year YEAR            Filter papers from this year onward
+  --end-year YEAR              Filter papers up to this year
+  --elsevier-key KEY           Your own Elsevier/Scopus API key
+  --no-elsevier                Skip the Scopus search pass entirely
+  --interactive                Ask clarifying questions before researching
+  --output DIR                 Output directory (default: ./output)
+  --email EMAIL                Email for polite API access to OpenAlex/CrossRef
+  --no-open                    Do not auto-open the HTML report in a browser
+  --verbose                    Enable debug logging
+  --reset-auth                 Clear stored auth state for the selected provider
+  --show-advisory              Re-show the Claude OAuth policy notice
 ```
 
 ```bash
@@ -582,6 +618,12 @@ deep-researcher "machine learning in healthcare" --interactive
 
 # Cloud provider for faster synthesis
 deep-researcher "quantum computing" --provider groq --start-year 2022
+
+# Compare two providers side-by-side
+deep-researcher "CRISPR gene editing" --compare claude openai
+
+# Re-run synthesis with a different model (no re-searching)
+deep-researcher --replay output/2026-04-09-161823-crispr-gene-editing --provider groq
 ```
 
 ---
@@ -667,6 +709,12 @@ deep-researcher "your query" --model gemma4
 ---
 
 ## Changelog
+
+### 0.9.0
+
+- **New: MCP server.** `pip install deep-researcher[mcp]` and add a one-line config to Claude Desktop or Claude Code. Five tools (`research`, `search_papers`, `synthesize`, `compare`, `list_runs`), three resources for reading past runs, and two pre-built prompts for guided workflows. Claude can now search papers and write literature reviews mid-conversation.
+- **New: Dual-provider comparison.** `--compare claude openai` runs search once, synthesizes with both LLMs in parallel, then generates a structured comparison analysis. Produces a `compare.html` with synced-scroll side-by-side columns. Also available via the TUI's **c** hotkey.
+- **New: Compare replay.** Re-run dual-provider synthesis on an existing compare folder without re-searching. Auto-detected by `--replay` when the folder has `mode: "compare"` in metadata.json.
 
 ### 0.8.0
 
