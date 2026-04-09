@@ -202,6 +202,35 @@ type your question and press Enter.
 > PowerShell avoids this entirely and still uses your `claude login`
 > credentials.
 
+### First-time setup for the `chatgpt` provider
+
+If you have a ChatGPT subscription, you can use it with no API key:
+
+```bash
+deep-researcher --provider chatgpt "your query"
+```
+
+On first run, deep-researcher checks for an existing Codex CLI /
+ChatGPT-Local session on disk, then falls back to a one-time browser
+sign-in (PKCE OAuth). The token is cached to
+`~/.deep-researcher/chatgpt-auth.json` and refreshed automatically
+before every API call.
+
+Manage the session:
+
+```bash
+deep-researcher auth-chatgpt           # Browser sign-in
+deep-researcher auth-chatgpt --status  # Show which auth tier is active
+deep-researcher auth-chatgpt --logout  # Delete the stored token
+```
+
+> **Terms of service:** this uses your ChatGPT subscription via the same
+> mechanism as the upstream Codex CLI, OpenClaw, and openai-oauth
+> projects. Intended for personal use on your own machine. Do not run
+> it as a hosted service or share your tokens. If OpenAI rotates the
+> OAuth client ID or the `chatgpt.com/backend-api/codex` endpoint, this
+> feature may stop working until the upstream ecosystem updates.
+
 ### Power users / scripts: one-shot mode
 
 Pass the question and flags directly, skipping the TUI:
