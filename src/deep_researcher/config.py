@@ -38,6 +38,9 @@ class Config:
     start_year: int | None = None
     end_year: int | None = None
     interactive: bool = False
+    # When True, skip the Elsevier/Scopus search pass entirely. Useful for
+    # users who don't want any call to api.elsevier.com in their pipeline.
+    no_elsevier: bool = False
     # Selects which LLM client implementation make_llm_client returns.
     # "openai"       -> existing OpenAI-compatible LLMClient (Ollama, OpenAI, Groq, …)
     # "claude_agent" -> claude_agent_sdk-backed client (OAuth via `claude login`)
