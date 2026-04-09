@@ -10,12 +10,16 @@ LLMClient hooks into for per-call token refresh.
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import os
+import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
+
+import httpx
 
 
 # The OAuth client ID used by the upstream Codex CLI / openai-oauth /
@@ -98,3 +102,117 @@ def _try_codex_files() -> Optional[ChatGPTAuth]:
         if auth is not None:
             return auth
     return None
+
+
+def _stored_auth_path() -> Path:
+    return _home() / ".deep-researcher" / "chatgpt-auth.json"
+
+
+def _try_stored_token() -> Optional[ChatGPTAuth]:
+    """Tier 2 — our own cached token from a previous PKCE flow."""
+    path = _stored_auth_path()
+    if not path.exists():
+        return None
+    return _parse_auth_file(path)
+
+
+@contextlib.contextmanager
+def _file_lock(target: Path):
+    """Cross-platform exclusive file lock keyed off a sidecar .lock file.
+
+    Two deep-researcher processes refreshing the same token at once would
+    race; this serializes them on a per-file basis.
+    """
+    target.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = target.with_suffix(target.suffix + ".lock")
+    fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        if sys.platform == "win32":
+            import msvcrt
+            while True:
+                try:
+                    msvcrt.locking(fd, msvcrt.LK_LOCK, 1)
+                    break
+                except OSError:
+                    time.sleep(0.05)
+            try:
+                yield
+            finally:
+                try:
+                    msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+                except OSError:
+                    pass
+        else:
+            import fcntl
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
+
+
+def _save_auth_file(target: Path, payload: dict) -> None:
+    """Atomic write via tmpfile + os.replace, with 0600 perms on POSIX."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_suffix(target.suffix + ".tmp")
+    tmp.write_text(json.dumps(payload))
+    try:
+        os.chmod(tmp, 0o600)
+    except OSError:
+        pass  # Windows
+    os.replace(tmp, target)
+
+
+def _refresh_tokens(refresh_token: str, client_id: str) -> dict:
+    resp = httpx.post(
+        _OAUTH_TOKEN_URL,
+        data={
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token,
+            "client_id": client_id,
+            "scope": _OAUTH_SCOPE,
+        },
+        timeout=30.0,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def _ensure_fresh(auth: ChatGPTAuth, *, skew: int = 60) -> ChatGPTAuth:
+    """If the token is near-expiry, refresh it and persist back to source_file."""
+    if not auth.is_expired(skew=skew):
+        return auth
+    if not auth.refresh_token:
+        raise ChatGPTAuthError(
+            "ChatGPT access token expired and no refresh token available. "
+            "Run: deep-researcher auth-chatgpt"
+        )
+    with _file_lock(auth.source_file):
+        # Re-read in case another process refreshed us first
+        if auth.source_file.exists():
+            on_disk = _parse_auth_file(auth.source_file)
+            if on_disk is not None and not on_disk.is_expired(skew=skew):
+                return on_disk
+        try:
+            new = _refresh_tokens(auth.refresh_token, auth.client_id)
+        except httpx.HTTPError as e:
+            raise ChatGPTAuthError(
+                f"Failed to refresh ChatGPT token: {e}. "
+                "Run: deep-researcher auth-chatgpt"
+            )
+        merged_payload = {
+            "access_token": new["access_token"],
+            "refresh_token": new.get("refresh_token", auth.refresh_token),
+            "expires_at": int(time.time() + int(new.get("expires_in", 3600))),
+            "client_id": auth.client_id,
+        }
+        _save_auth_file(auth.source_file, merged_payload)
+        return ChatGPTAuth(
+            access_token=merged_payload["access_token"],
+            refresh_token=merged_payload["refresh_token"],
+            expires_at=merged_payload["expires_at"],
+            source_file=auth.source_file,
+            client_id=auth.client_id,
+        )
