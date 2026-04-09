@@ -254,6 +254,19 @@ def _render_reference(idx: int, p: Paper) -> str:
 """.strip()
 
 
+def _render_exec_summary(text: str) -> str:
+    """Render the executive summary block, or empty string if missing."""
+    text = (text or "").strip()
+    if not text:
+        return ""
+    return (
+        '<section class="exec-summary" aria-label="Executive summary">'
+        '<h2 class="exec-label">Executive summary</h2>'
+        f'<p>{html.escape(text)}</p>'
+        '</section>'
+    )
+
+
 # ---------------------------------------------------------------------------
 # Full page template
 # ---------------------------------------------------------------------------
@@ -430,6 +443,70 @@ details.bibtex-details pre { margin-top: .5rem; font-size: 11px; max-height: 200
   main { padding: 1.5rem; }
 }
 /* Print */
+/* Executive summary */
+.exec-summary {
+  background: var(--accent-soft);
+  border-left: 4px solid var(--accent);
+  padding: 1.25rem 1.5rem;
+  margin: 0 0 2rem;
+  border-radius: 8px;
+  font-family: var(--serif);
+  font-size: 1.05rem;
+  line-height: 1.7;
+}
+.exec-summary .exec-label {
+  margin: 0 0 .5rem;
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.exec-summary p { margin: 0; max-width: none; }
+/* Charts */
+details.charts {
+  margin: 0 0 2rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+}
+details.charts > summary {
+  cursor: pointer;
+  padding: .75rem 1rem;
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+details.charts[open] > summary { border-bottom: 1px solid var(--border); }
+.charts-grid {
+  display: grid;
+  gap: 1.5rem;
+  padding: 1.25rem 1.5rem;
+  grid-template-columns: 1fr;
+}
+@media (min-width: 1100px) {
+  .charts-grid { grid-template-columns: 1fr 1fr; }
+  .charts-grid .chart-years { grid-column: 1 / -1; }
+}
+figure.chart { margin: 0; }
+figure.chart figcaption {
+  font-family: var(--sans);
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  margin-bottom: .5rem;
+}
+figure.chart svg { display: block; width: 100%; height: auto; }
+figure.chart svg rect:hover { opacity: 0.7; }
+@media print {
+  details.charts { break-inside: avoid; }
+  details.charts:not([open]) > *:not(summary) { display: block !important; }
+}
 @media print {
   .theme-toggle, #to-top, aside.toc, #ref-search, .copy-bib { display: none !important; }
   .layout { display: block; max-width: 100%; }
@@ -523,6 +600,8 @@ def build_html_report(
     report_md: str,
     synthesis_papers: list[Paper],
     all_papers: dict[str, Paper],
+    exec_summary: str = "",
+    chart_data: dict | None = None,
 ) -> str:
     """Build a self-contained HTML report page."""
     # Build id -> title map for citation tooltips
@@ -570,6 +649,10 @@ def build_html_report(
         _render_reference(i, p) for i, p in enumerate(synthesis_papers, 1)
     )
 
+    exec_summary_html = _render_exec_summary(exec_summary)
+    from deep_researcher.charts import render_all_charts
+    charts_html = render_all_charts(chart_data) if chart_data else ""
+
     title_text = html.escape(query)
     generated = datetime.now().strftime("%Y-%m-%d %H:%M")
 
@@ -602,6 +685,8 @@ def build_html_report(
         <span><strong>Sources:</strong> {html.escape(sources_str)}</span>
       </div>
     </div>
+    {exec_summary_html}
+    {charts_html}
     {body_html}
     <div class="references-header">
       <h4 id="references">References ({len(synthesis_papers)})</h4>
