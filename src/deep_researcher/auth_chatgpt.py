@@ -10,16 +10,24 @@ LLMClient hooks into for per-call token refresh.
 """
 from __future__ import annotations
 
+import base64
 import contextlib
+import hashlib
 import json
 import os
+import secrets
 import sys
+import threading
 import time
+import urllib.parse
+import webbrowser
 from dataclasses import dataclass, field
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Optional
 
 import httpx
+from rich.console import Console
 
 
 # The OAuth client ID used by the upstream Codex CLI / openai-oauth /
@@ -216,3 +224,156 @@ def _ensure_fresh(auth: ChatGPTAuth, *, skew: int = 60) -> ChatGPTAuth:
             source_file=auth.source_file,
             client_id=auth.client_id,
         )
+
+
+# ----------------------------------------------------------------------
+# Tier 3: PKCE browser flow
+# ----------------------------------------------------------------------
+
+def _b64url(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+
+def _capture_callback(state: str, deadline: float) -> dict:
+    """Spin up a single-shot HTTP server on 127.0.0.1:1455.
+
+    Returns the parsed query params from the first GET to /auth/callback.
+    Raises ChatGPTAuthError on timeout or state mismatch.
+    """
+    captured: dict = {}
+    done = threading.Event()
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *args, **kwargs):  # silence
+            pass
+
+        def do_GET(self):
+            parsed = urllib.parse.urlparse(self.path)
+            if parsed.path != "/auth/callback":
+                self.send_response(404)
+                self.end_headers()
+                return
+            params = dict(urllib.parse.parse_qsl(parsed.query))
+            captured.update(params)
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(
+                b"<!doctype html><meta charset=utf-8><title>Signed in</title>"
+                b"<style>body{font:16px -apple-system,sans-serif;padding:40px;"
+                b"color:#1a1a1a;background:#f7f7f7}</style>"
+                b"<h2>Signed in to ChatGPT</h2>"
+                b"<p>You can close this tab and return to your terminal.</p>"
+            )
+            done.set()
+
+    server = HTTPServer(("127.0.0.1", 1455), Handler)
+    t = threading.Thread(target=server.serve_forever, daemon=True)
+    t.start()
+    try:
+        while time.time() < deadline and not done.is_set():
+            time.sleep(0.1)
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    if "error" in captured:
+        raise ChatGPTAuthError(f"OAuth error: {captured['error']}")
+    if "code" not in captured:
+        raise ChatGPTAuthError("OAuth timeout — browser callback never fired")
+    if captured.get("state") != state:
+        raise ChatGPTAuthError("OAuth state mismatch — possible CSRF")
+    return captured
+
+
+def _run_browser_oauth(console: Console) -> ChatGPTAuth:
+    code_verifier = _b64url(secrets.token_bytes(32))
+    code_challenge = _b64url(hashlib.sha256(code_verifier.encode()).digest())
+    state = _b64url(secrets.token_bytes(16))
+
+    params = {
+        "response_type": "code",
+        "client_id": _OPENAI_OAUTH_CLIENT_ID,
+        "redirect_uri": _OAUTH_REDIRECT_URI,
+        "scope": _OAUTH_SCOPE,
+        "code_challenge": code_challenge,
+        "code_challenge_method": "S256",
+        "state": state,
+    }
+    authorize_url = f"{_OAUTH_AUTHORIZE_URL}?{urllib.parse.urlencode(params)}"
+    console.print("[cyan]Opening your browser to sign in to ChatGPT...[/cyan]")
+    console.print(f"[dim]If it doesn't open, visit: {authorize_url}[/dim]")
+    webbrowser.open(authorize_url)
+
+    deadline = time.time() + 300
+    captured = _capture_callback(state, deadline)
+
+    resp = httpx.post(
+        _OAUTH_TOKEN_URL,
+        data={
+            "grant_type": "authorization_code",
+            "code": captured["code"],
+            "redirect_uri": _OAUTH_REDIRECT_URI,
+            "client_id": _OPENAI_OAUTH_CLIENT_ID,
+            "code_verifier": code_verifier,
+        },
+        timeout=30.0,
+    )
+    resp.raise_for_status()
+    tokens = resp.json()
+
+    target = _stored_auth_path()
+    payload = {
+        "access_token": tokens["access_token"],
+        "refresh_token": tokens.get("refresh_token", ""),
+        "expires_at": int(time.time() + int(tokens.get("expires_in", 3600))),
+        "client_id": _OPENAI_OAUTH_CLIENT_ID,
+    }
+    _save_auth_file(target, payload)
+    console.print(f"[green]Signed in. Token saved to {target}.[/green]")
+    return ChatGPTAuth(
+        access_token=payload["access_token"],
+        refresh_token=payload["refresh_token"],
+        expires_at=payload["expires_at"],
+        source_file=target,
+    )
+
+
+def clear_stored_chatgpt_auth() -> None:
+    """Delete our cached token (tier-2 location). No-op if missing."""
+    p = _stored_auth_path()
+    if p.exists():
+        p.unlink()
+
+
+def resolve_chatgpt_auth(
+    console: Console, *, verbose: bool, allow_browser: bool = True
+) -> ChatGPTAuth:
+    """Run the four-tier auth flow.
+
+    Tier 4 (OPENAI_API_KEY fallback) is handled by the caller in
+    __main__._setup_chatgpt_provider — this function only handles 1-3.
+    """
+    auth = _try_codex_files()
+    if auth is not None:
+        if verbose:
+            console.print(
+                f"[dim]Detected Codex/ChatGPT-Local session at "
+                f"{auth.source_file} — reusing your ChatGPT subscription auth.[/dim]"
+            )
+        return _ensure_fresh(auth)
+
+    auth = _try_stored_token()
+    if auth is not None:
+        if verbose:
+            console.print(
+                f"[dim]Using stored ChatGPT OAuth token from "
+                f"{auth.source_file}.[/dim]"
+            )
+        return _ensure_fresh(auth)
+
+    if not allow_browser:
+        raise ChatGPTAuthError(
+            "No ChatGPT auth found. Run: deep-researcher auth-chatgpt"
+        )
+    return _run_browser_oauth(console)

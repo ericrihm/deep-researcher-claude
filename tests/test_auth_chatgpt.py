@@ -160,3 +160,79 @@ def test_ensure_fresh_calls_refresh_endpoint_when_expired(tmp_path, monkeypatch)
     mock_post.assert_called_once()
     saved = json.loads(f.read_text())
     assert saved["access_token"] == "newtok"
+
+
+def test_resolve_prefers_tier1_codex_file(tmp_path, monkeypatch):
+    from deep_researcher.auth_chatgpt import resolve_chatgpt_auth
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    monkeypatch.delenv("CODEX_HOME", raising=False)
+    monkeypatch.delenv("CHATGPT_LOCAL_HOME", raising=False)
+    f = tmp_path / ".codex" / "auth.json"
+    _write_auth_file(f, access="codex-tok")
+    from rich.console import Console
+    auth = resolve_chatgpt_auth(Console(quiet=True), verbose=False, allow_browser=False)
+    assert auth.access_token == "codex-tok"
+
+
+def test_resolve_falls_through_to_stored_when_no_codex(tmp_path, monkeypatch):
+    from deep_researcher.auth_chatgpt import resolve_chatgpt_auth
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    monkeypatch.delenv("CODEX_HOME", raising=False)
+    monkeypatch.delenv("CHATGPT_LOCAL_HOME", raising=False)
+    stored = tmp_path / ".deep-researcher" / "chatgpt-auth.json"
+    _write_auth_file(stored, access="stored-tok")
+    from rich.console import Console
+    auth = resolve_chatgpt_auth(Console(quiet=True), verbose=False, allow_browser=False)
+    assert auth.access_token == "stored-tok"
+
+
+def test_resolve_raises_when_no_tiers_available_and_browser_disabled(tmp_path, monkeypatch):
+    from deep_researcher.auth_chatgpt import resolve_chatgpt_auth, ChatGPTAuthError
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    monkeypatch.delenv("CODEX_HOME", raising=False)
+    monkeypatch.delenv("CHATGPT_LOCAL_HOME", raising=False)
+    from rich.console import Console
+    with pytest.raises(ChatGPTAuthError):
+        resolve_chatgpt_auth(Console(quiet=True), verbose=False, allow_browser=False)
+
+
+def test_clear_stored_auth_removes_file(tmp_path, monkeypatch):
+    from deep_researcher.auth_chatgpt import clear_stored_chatgpt_auth, _stored_auth_path
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    p = _stored_auth_path()
+    _write_auth_file(p)
+    assert p.exists()
+    clear_stored_chatgpt_auth()
+    assert not p.exists()
+
+
+def test_pkce_browser_flow_exchanges_code_for_tokens(tmp_path, monkeypatch):
+    """Mock the browser open + callback delivery + token exchange."""
+    from deep_researcher.auth_chatgpt import _run_browser_oauth
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+
+    fake_resp = MagicMock()
+    fake_resp.json.return_value = {
+        "access_token": "browser-tok",
+        "refresh_token": "browser-ref",
+        "expires_in": 3600,
+    }
+    fake_resp.raise_for_status.return_value = None
+
+    def fake_capture_code(state, deadline):
+        return {"code": "auth-code", "state": state}
+
+    with patch("deep_researcher.auth_chatgpt.webbrowser.open"), \
+         patch("deep_researcher.auth_chatgpt._capture_callback", side_effect=fake_capture_code), \
+         patch("deep_researcher.auth_chatgpt.httpx.post", return_value=fake_resp):
+        from rich.console import Console
+        auth = _run_browser_oauth(Console(quiet=True))
+
+    assert auth.access_token == "browser-tok"
+    assert auth.source_file.exists()
+    assert json.loads(auth.source_file.read_text())["access_token"] == "browser-tok"
