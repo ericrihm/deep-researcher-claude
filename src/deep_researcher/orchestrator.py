@@ -236,6 +236,9 @@ class Orchestrator:
         provider_a: str,
         provider_b: str,
         providers: dict[str, dict[str, str]],
+        *,
+        preloaded_papers: dict[str, "Paper"] | None = None,
+        output_folder: str | None = None,
     ) -> tuple[str, str]:
         """Run search+enrich once, then synthesize with two providers in parallel.
 
@@ -246,6 +249,10 @@ class Orchestrator:
 
         Partial-failure tolerance: if one provider fails, the other's results
         are still saved.
+
+        When *preloaded_papers* is provided the search + enrich phases are
+        skipped entirely (used by compare_replay).  *output_folder* pins the
+        output directory instead of creating a new timestamped one.
         """
         self.console.print(Panel(
             f"[bold]{query}[/bold]\n"
@@ -254,22 +261,27 @@ class Orchestrator:
             border_style="magenta",
         ))
 
-        state = PipelineState(query=query)
-        self._output_folder = get_output_folder(query, self.config.output_dir)
+        if preloaded_papers is not None:
+            state = PipelineState(query=query, papers=preloaded_papers)
+            self._output_folder = output_folder or get_output_folder(query, self.config.output_dir)
+            self.console.print(f"  [dim]Using {len(preloaded_papers)} pre-loaded papers[/dim]")
+        else:
+            state = PipelineState(query=query)
+            self._output_folder = get_output_folder(query, self.config.output_dir)
 
-        # Phase 1: Search (shared)
-        self.console.print("\n[bold blue]Phase 1: Searching Google Scholar + Scopus...[/bold blue]")
-        with self.console.status("[cyan]Searching academic databases...", spinner="dots"):
-            state = self._run_search(state)
+            # Phase 1: Search (shared)
+            self.console.print("\n[bold blue]Phase 1: Searching Google Scholar + Scopus...[/bold blue]")
+            with self.console.status("[cyan]Searching academic databases...", spinner="dots"):
+                state = self._run_search(state)
 
-        if not state.papers:
-            self.console.print("[yellow]No papers found.[/yellow]")
-            return ("No papers found.", "No papers found.")
+            if not state.papers:
+                self.console.print("[yellow]No papers found.[/yellow]")
+                return ("No papers found.", "No papers found.")
 
-        # Phase 2: Enrich (shared)
-        self.console.print(f"\n[bold blue]Phase 2: Enriching {len(state.papers)} papers...[/bold blue]")
-        with self.console.status("[cyan]Fetching metadata...", spinner="dots"):
-            state = self._run_enrichment(state)
+            # Phase 2: Enrich (shared)
+            self.console.print(f"\n[bold blue]Phase 2: Enriching {len(state.papers)} papers...[/bold blue]")
+            with self.console.status("[cyan]Fetching metadata...", spinner="dots"):
+                state = self._run_enrichment(state)
 
         # Checkpoint
         os.makedirs(self._output_folder, exist_ok=True)
@@ -451,6 +463,51 @@ class Orchestrator:
         else:
             self.console.print("  [yellow]Comparison analysis produced no output[/yellow]")
         return result.text
+
+    def compare_replay(
+        self,
+        folder: str,
+        providers: dict[str, dict[str, str]],
+    ) -> tuple[str, str]:
+        """Re-run dual-provider synthesis on a compare folder's papers.json.
+
+        Loads *folder*/metadata.json (must have mode=compare) and
+        *folder*/papers.json, then delegates to compare_research() with the
+        pre-loaded corpus, skipping search+enrich entirely.
+        """
+        meta_path = os.path.join(folder, "metadata.json")
+        if not os.path.exists(meta_path):
+            raise FileNotFoundError(f"No metadata.json in {folder}")
+        with open(meta_path, "r", encoding="utf-8") as f:
+            meta = json.load(f)
+        if meta.get("mode") != "compare":
+            raise ValueError(f"Not a compare folder: {folder}")
+
+        prov_list = meta.get("providers", [])
+        if len(prov_list) != 2:
+            raise ValueError(f"Expected 2 providers in metadata, got {len(prov_list)}")
+
+        query = meta.get("query", "replay")
+        provider_a, provider_b = prov_list
+
+        papers_path = os.path.join(folder, "papers.json")
+        if not os.path.exists(papers_path):
+            raise FileNotFoundError(f"No papers.json in {folder}")
+        with open(papers_path, "r", encoding="utf-8") as f:
+            raw = json.load(f)
+
+        known = set(Paper.__dataclass_fields__.keys())
+        rehydrated = {
+            p.unique_key: p
+            for d in raw if isinstance(d, dict)
+            for p in [Paper(**{k: v for k, v in d.items() if k in known})]
+        }
+
+        return self.compare_research(
+            query, provider_a, provider_b, providers,
+            preloaded_papers=rehydrated,
+            output_folder=folder,
+        )
 
     # ------------------------------------------------------------------
     # Phase implementations (each calls tools, returns new state)
