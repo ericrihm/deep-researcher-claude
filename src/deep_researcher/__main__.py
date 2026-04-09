@@ -29,6 +29,27 @@ PROVIDERS: dict[str, dict[str, str]] = {
 }
 
 
+def _setup_elsevier(args, config: Config, console: Console) -> None:
+    """Resolve the Elsevier API key and print the borrowing notice if
+    we're using the bundled default. Call once, before Orchestrator."""
+    from deep_researcher.elsevier_auth import (
+        resolve_elsevier_key,
+        print_borrowing_notice_once,
+    )
+    if args.no_elsevier:
+        config.no_elsevier = True
+        config.scopus_api_key = ""
+        return
+
+    key, is_bundled = resolve_elsevier_key(
+        flag_key=args.elsevier_key,
+        config_key=config.scopus_api_key or None,
+    )
+    config.scopus_api_key = key
+    if is_bundled:
+        print_borrowing_notice_once(console)
+
+
 def _setup_claude_provider(
     config: Config,
     console: Console,
@@ -180,6 +201,11 @@ def main() -> None:
     parser.add_argument("--email", default=None, help="Email for polite API access to OpenAlex/CrossRef/Unpaywall")
     parser.add_argument("--start-year", type=int, default=None, help="Filter papers published on or after this year")
     parser.add_argument("--end-year", type=int, default=None, help="Filter papers published on or before this year")
+    parser.add_argument("--elsevier-key", default=None,
+                        help="Elsevier API key for Scopus search "
+                             "(overrides ELSEVIER_API_KEY and config.json)")
+    parser.add_argument("--no-elsevier", action="store_true",
+                        help="Skip the Elsevier/Scopus search pass")
     parser.add_argument("--interactive", action="store_true", help="Ask clarifying questions before researching")
     parser.add_argument("--no-open", action="store_true", help="Do not auto-open the HTML report in a browser when done")
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
@@ -237,6 +263,7 @@ def main() -> None:
             config.output_dir = args.output
         if args.email:
             config.email = args.email
+        _setup_elsevier(args, config, console)
         _run_replay(console, config, args.replay, open_html=not args.no_open)
         return
 
@@ -257,6 +284,7 @@ def main() -> None:
                 )
                 if not ok:
                     sys.exit(1)
+            _setup_elsevier(args, config, console)
             _run_replay(console, config, folder, open_html=not args.no_open)
             return
         query, config, provider_name = result
@@ -270,6 +298,7 @@ def main() -> None:
             )
             if not ok:
                 sys.exit(1)
+        _setup_elsevier(args, config, console)
         _run_pipeline(console, config, query, open_html=not args.no_open)
         return
 
@@ -313,6 +342,8 @@ def main() -> None:
         config.end_year = args.end_year
     if args.interactive:
         config.interactive = True
+
+    _setup_elsevier(args, config, console)
 
     # Check for missing API key on cloud providers
     # ("claude" routes through the SDK and uses OAuth; no API key needed.)
