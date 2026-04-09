@@ -25,4 +25,12 @@ def make_llm_client(config: "Config"):
         from deep_researcher.llm_claude import ClaudeAgentLLMClient
         return ClaudeAgentLLMClient(config)
     from deep_researcher.llm import LLMClient
-    return LLMClient(config)
+    client = LLMClient(config)
+    if kind == "chatgpt_oauth":
+        # Caller (__main__._setup_chatgpt_provider) stashes the live
+        # ChatGPTAuth on the Config so we can attach it here. After this
+        # point every chat() call auto-refreshes the token.
+        chatgpt_auth = getattr(config, "_chatgpt_auth_handle", None)
+        if chatgpt_auth is not None:
+            client._chatgpt_auth = chatgpt_auth
+    return client
