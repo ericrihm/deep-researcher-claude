@@ -7,6 +7,7 @@ import re
 from collections import Counter
 from datetime import datetime
 
+from deep_researcher.charts import compute_chart_data
 from deep_researcher.html_report import build_html_report
 from deep_researcher.models import Paper
 
@@ -18,6 +19,8 @@ def save_report(
     output_dir: str,
     folder: str | None = None,
     synthesis_papers: list[Paper] | None = None,
+    exec_summary: str = "",
+    categories: dict[str, list[int]] | None = None,
 ) -> dict[str, str]:
     if not folder:
         slug = _make_slug(query)
@@ -110,7 +113,15 @@ def save_report(
                 [p for p in papers.values() if p.title],
                 key=lambda p: (-(p.citation_count or 0), -(p.year or 0)),
             )
-        html_doc = build_html_report(query, report_text, syn, papers)
+        chart_data = compute_chart_data(syn, papers, categories)
+        html_doc = build_html_report(
+            query,
+            report_text,
+            syn,
+            papers,
+            exec_summary=exec_summary,
+            chart_data=chart_data,
+        )
         with open(html_path, "w", encoding="utf-8") as f:
             f.write(html_doc)
     except Exception as e:
