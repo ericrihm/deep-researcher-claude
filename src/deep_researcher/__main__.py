@@ -600,6 +600,28 @@ def _run_replay(console: Console, config: Config, folder: str, *, open_html: boo
 
     prev_handler = signal.signal(signal.SIGINT, _on_interrupt)
     try:
+        # Detect compare folders and dispatch to compare_replay
+        import json as _json
+        meta_path = os.path.join(folder, "metadata.json")
+        if os.path.exists(meta_path):
+            try:
+                with open(meta_path, "r", encoding="utf-8") as _f:
+                    _meta = _json.load(_f)
+                if _meta.get("mode") == "compare":
+                    report_a, report_b = orchestrator.compare_replay(folder, PROVIDERS)
+                    if report_a or report_b:
+                        console.print("\n[green]Compare replay complete.[/green]")
+                    html_path = os.path.join(folder, "compare.html")
+                    if open_html and os.path.exists(html_path):
+                        import webbrowser
+                        try:
+                            webbrowser.open("file://" + os.path.abspath(html_path))
+                        except Exception:
+                            pass
+                    return
+            except (_json.JSONDecodeError, KeyError):
+                pass
+
         report = orchestrator.replay(folder)
         if report:
             console.print("\n")
