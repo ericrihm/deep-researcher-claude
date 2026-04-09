@@ -47,6 +47,8 @@ def save_results(
             state.query, state.report, state.papers,
             output_dir, folder=folder,
             synthesis_papers=state.synthesis_papers or None,
+            exec_summary=state.exec_summary,
+            categories=state.categories,
         )
         console.print(f"\n[green bold]Files saved:[/green bold]")
         for label, path in paths.items():
