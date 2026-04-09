@@ -6,7 +6,7 @@
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10+-8b5cf6.svg?style=flat-square&labelColor=0f0b1e" alt="Python 3.10+"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-14b8a6.svg?style=flat-square&labelColor=0f0b1e" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/version-0.8.0-ec4899.svg?style=flat-square&labelColor=0f0b1e" alt="Version: 0.8.0">
-  <img src="https://img.shields.io/badge/tests-193%20passing-14b8a6.svg?style=flat-square&labelColor=0f0b1e" alt="Tests: 193 passing">
+  <img src="https://img.shields.io/badge/tests-206%20passing-14b8a6.svg?style=flat-square&labelColor=0f0b1e" alt="Tests: 206 passing">
 </p>
 
 <p align="center">
@@ -40,6 +40,7 @@ Deep Researcher searches **Google Scholar** for academically-ranked papers, enri
 | **Interactive TUI** | Type a question in plain English — no shell quoting, no flags |
 | **Runs locally** | Use Ollama and your queries never leave your machine |
 | **Claude subscription** | `--provider claude` uses your `claude login` OAuth — no API key |
+| **MCP server** | `pip install deep-researcher[mcp]` — Claude Desktop and Claude Code can search papers and write reviews mid-conversation |
 | **Agentic architecture** | Tool-based pipeline inspired by [Claude Code](https://github.com/anthropics/claude-code) |
 | **5 dependencies** | No LangChain, no framework soup |
 
@@ -251,6 +252,48 @@ deep-researcher "CRISPR gene editing" --compare claude openai
 This produces a `compare.html` with synced-scroll columns and a structured comparison summary. Each provider's full report is also saved in its own subfolder. Replay also works on compare folders — re-running synthesis without re-searching.
 
 The TUI offers the same feature via the **c** hotkey in the main menu.
+
+### Use as an MCP server (Claude Desktop / Claude Code)
+
+Deep Researcher can run as an [MCP server](https://modelcontextprotocol.io), letting Claude search papers and write literature reviews mid-conversation:
+
+```bash
+pip install deep-researcher[mcp]
+```
+
+Add to your Claude Desktop config (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "deep-researcher": {
+      "command": "deep-researcher-mcp"
+    }
+  }
+}
+```
+
+Or for Claude Code (`.claude/settings.json`):
+
+```json
+{
+  "mcpServers": {
+    "deep-researcher": {
+      "command": "deep-researcher-mcp"
+    }
+  }
+}
+```
+
+**Available tools:**
+
+| Tool | What it does |
+|---|---|
+| `research` | Full pipeline: search + enrich + synthesize (2-5 min) |
+| `search_papers` | Search only, return paper metadata (30-60s) |
+| `synthesize` | Re-run synthesis on existing papers.json |
+| `compare` | Dual-provider side-by-side comparison |
+| `list_runs` | Browse previous research output folders |
 
 ### Run with Ollama (local, free, private)
 
