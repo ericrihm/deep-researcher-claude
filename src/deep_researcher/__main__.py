@@ -26,6 +26,11 @@ PROVIDERS: dict[str, dict[str, str]] = {
     # this provider; the entries exist so the preset-application loop in main()
     # doesn't need a special case.
     "claude": {"base_url": "", "api_key": "", "default_model": "claude-sonnet-4-5"},
+    # Routes through PKCE OAuth against chatgpt.com/backend-api/codex. Reuses
+    # a Codex CLI auth.json if present, else falls back to browser sign-in.
+    # No API key required.
+    "chatgpt": {"base_url": "https://chatgpt.com/backend-api/codex",
+                "api_key": "", "default_model": "gpt-5"},
 }
 
 
@@ -125,7 +130,108 @@ def _setup_claude_provider(
     return True
 
 
+def _setup_chatgpt_provider(
+    config: Config,
+    console: Console,
+    *,
+    verbose: bool,
+    reset_auth: bool,
+) -> bool:
+    """Wire up --provider chatgpt.
+
+    Four-tier resolution:
+    1. Existing Codex CLI / ChatGPT-Local auth.json
+    2. Our own cached token at ~/.deep-researcher/chatgpt-auth.json
+    3. PKCE browser sign-in (writes to tier 2 for next time)
+    4. Fallback: OPENAI_API_KEY against api.openai.com (if tiers 1-3 fail)
+    """
+    from deep_researcher.auth_chatgpt import (
+        CHATGPT_BACKEND_BASE_URL,
+        ChatGPTAuthError,
+        clear_stored_chatgpt_auth,
+        resolve_chatgpt_auth,
+    )
+    config.provider_kind = "chatgpt_oauth"
+    config.base_url = CHATGPT_BACKEND_BASE_URL
+    if reset_auth:
+        clear_stored_chatgpt_auth()
+        console.print("[yellow]--reset-auth: cleared stored ChatGPT token.[/yellow]")
+    try:
+        auth = resolve_chatgpt_auth(console, verbose=verbose, allow_browser=True)
+    except ChatGPTAuthError as e:
+        env_key = os.environ.get("OPENAI_API_KEY", "").strip()
+        if env_key:
+            console.print(
+                f"[yellow]ChatGPT OAuth failed ({e}); "
+                f"falling back to OPENAI_API_KEY.[/yellow]"
+            )
+            config.provider_kind = "openai"
+            config.base_url = "https://api.openai.com/v1"
+            config.api_key = env_key
+            return True
+        console.print(f"[red]{e}[/red]")
+        return False
+    config.api_key = auth.access_token
+    config._chatgpt_auth_handle = auth
+    return True
+
+
+def _handle_auth_chatgpt_subcommand(argv: list[str]) -> None:
+    """Dispatched from main() when argv[1] == 'auth-chatgpt'."""
+    from deep_researcher.auth_chatgpt import (
+        ChatGPTAuthError,
+        _try_codex_files,
+        _try_stored_token,
+        clear_stored_chatgpt_auth,
+        resolve_chatgpt_auth,
+    )
+    console = Console()
+    sub = argparse.ArgumentParser(prog="deep-researcher auth-chatgpt")
+    sub.add_argument("--logout", action="store_true", help="Delete stored token")
+    sub.add_argument(
+        "--status", action="store_true", help="Show which auth tier is active"
+    )
+    sub_args = sub.parse_args(argv)
+
+    if sub_args.logout:
+        clear_stored_chatgpt_auth()
+        console.print("[green]Stored ChatGPT token deleted.[/green]")
+        return
+    if sub_args.status:
+        codex = _try_codex_files()
+        stored = _try_stored_token()
+        if codex:
+            console.print(
+                f"[green]Tier 1: Codex/Local file at {codex.source_file}[/green]"
+            )
+            console.print(f"[dim]  expires_at: {codex.expires_at}[/dim]")
+        elif stored:
+            console.print(
+                f"[green]Tier 2: Stored token at {stored.source_file}[/green]"
+            )
+            console.print(f"[dim]  expires_at: {stored.expires_at}[/dim]")
+        else:
+            console.print(
+                "[yellow]No ChatGPT auth detected. "
+                "Run: deep-researcher auth-chatgpt[/yellow]"
+            )
+        return
+
+    try:
+        auth = resolve_chatgpt_auth(console, verbose=True, allow_browser=True)
+        console.print(f"[green]Signed in. Token at {auth.source_file}.[/green]")
+    except ChatGPTAuthError as e:
+        console.print(f"[red]{e}[/red]")
+        sys.exit(1)
+
+
 def main() -> None:
+    # Intercept `deep-researcher auth-chatgpt ...` before argparse runs,
+    # since it has its own subparser and argument set.
+    if len(sys.argv) >= 2 and sys.argv[1] == "auth-chatgpt":
+        _handle_auth_chatgpt_subcommand(sys.argv[2:])
+        return
+
     # Windows encoding handling — two layers, with important caveats.
     #
     # Layer 1 (always safe): reconfigure Python's own stdout/stderr to
@@ -253,6 +359,14 @@ def main() -> None:
                 )
                 if not ok:
                     sys.exit(1)
+            elif args.provider == "chatgpt":
+                ok = _setup_chatgpt_provider(
+                    config, console,
+                    verbose=args.verbose,
+                    reset_auth=args.reset_auth,
+                )
+                if not ok:
+                    sys.exit(1)
         if args.model:
             config.model = args.model
         if args.base_url:
@@ -284,6 +398,14 @@ def main() -> None:
                 )
                 if not ok:
                     sys.exit(1)
+            elif provider_name == "chatgpt":
+                ok = _setup_chatgpt_provider(
+                    config, console,
+                    verbose=args.verbose,
+                    reset_auth=args.reset_auth,
+                )
+                if not ok:
+                    sys.exit(1)
             _setup_elsevier(args, config, console)
             _run_replay(console, config, folder, open_html=not args.no_open)
             return
@@ -294,6 +416,14 @@ def main() -> None:
                 console,
                 verbose=args.verbose,
                 show_advisory=args.show_advisory,
+                reset_auth=args.reset_auth,
+            )
+            if not ok:
+                sys.exit(1)
+        elif provider_name == "chatgpt":
+            ok = _setup_chatgpt_provider(
+                config, console,
+                verbose=args.verbose,
                 reset_auth=args.reset_auth,
             )
             if not ok:
@@ -324,6 +454,14 @@ def main() -> None:
             )
             if not ok:
                 sys.exit(1)
+        elif args.provider == "chatgpt":
+            ok = _setup_chatgpt_provider(
+                config, console,
+                verbose=args.verbose,
+                reset_auth=args.reset_auth,
+            )
+            if not ok:
+                sys.exit(1)
 
     # Explicit args override provider preset
     if args.model:
@@ -346,9 +484,9 @@ def main() -> None:
     _setup_elsevier(args, config, console)
 
     # Check for missing API key on cloud providers
-    # ("claude" routes through the SDK and uses OAuth; no API key needed.)
+    # ("claude" and "chatgpt" use OAuth; no API key needed upfront.)
     if not config.api_key or config.api_key in ("ollama", "lm-studio"):
-        if args.provider and args.provider not in ("ollama", "lmstudio", "claude"):
+        if args.provider and args.provider not in ("ollama", "lmstudio", "claude", "chatgpt"):
             console.print(f"[red]Error: --provider {args.provider} requires an API key.[/red]")
             console.print(f"Set it with: --api-key YOUR_KEY")
             console.print(f"Or export it — bash/zsh: [cyan]export OPENAI_API_KEY=YOUR_KEY[/cyan]  "

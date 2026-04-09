@@ -42,9 +42,16 @@ class Config:
     # users who don't want any call to api.elsevier.com in their pipeline.
     no_elsevier: bool = False
     # Selects which LLM client implementation make_llm_client returns.
-    # "openai"       -> existing OpenAI-compatible LLMClient (Ollama, OpenAI, Groq, …)
-    # "claude_agent" -> claude_agent_sdk-backed client (OAuth via `claude login`)
+    # "openai"        -> existing OpenAI-compatible LLMClient (Ollama, OpenAI, Groq, …)
+    # "claude_agent"  -> claude_agent_sdk-backed client (OAuth via `claude login`)
+    # "chatgpt_oauth" -> LLMClient against chatgpt.com/backend-api/codex with a
+    #                    ChatGPTAuth handle attached for per-call refresh
     provider_kind: str = "openai"
+    # When provider_kind == "chatgpt_oauth", _setup_chatgpt_provider stashes
+    # the live ChatGPTAuth here so make_llm_client can attach it to the
+    # LLMClient. Leading underscore marks it as non-persistent (not serialized
+    # to config.json).
+    _chatgpt_auth_handle: object = None
 
     def __post_init__(self) -> None:
         file_cfg = _load_config_file()
