@@ -1,16 +1,12 @@
-<h1 align="center">
-  <img src="assets/logo.svg" width="64" alt="Deep Researcher" align="absmiddle">&nbsp;&nbsp;Deep Researcher
-</h1>
-
 <p align="center">
-  <strong>Search Google Scholar, enrich with OpenAlex, synthesize structured literature reviews — all locally.</strong>
+  <img src="assets/banner.svg" alt="Deep Researcher — agentic literature reviews from your terminal" width="100%">
 </p>
 
 <p align="center">
-  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10+-blue.svg?style=flat-square" alt="Python 3.10+"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg?style=flat-square" alt="License: MIT"></a>
-  <img src="https://img.shields.io/badge/version-0.6.0-blue.svg?style=flat-square" alt="Version: 0.6.0">
-  <img src="https://img.shields.io/badge/tests-95%20passing-brightgreen.svg?style=flat-square" alt="Tests: 95 passing">
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10+-8b5cf6.svg?style=flat-square&labelColor=0f0b1e" alt="Python 3.10+"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-14b8a6.svg?style=flat-square&labelColor=0f0b1e" alt="License: MIT"></a>
+  <img src="https://img.shields.io/badge/version-0.7.0-ec4899.svg?style=flat-square&labelColor=0f0b1e" alt="Version: 0.7.0">
+  <img src="https://img.shields.io/badge/tests-134%20passing-14b8a6.svg?style=flat-square&labelColor=0f0b1e" alt="Tests: 134 passing">
 </p>
 
 <p align="center">
@@ -37,6 +33,8 @@ Deep Researcher searches **Google Scholar** for academically-ranked papers, enri
 | **Structured synthesis** | Papers categorized by theme, with per-category analysis and cross-category patterns |
 | **Consistent `[N]` citations** | Every reference in the text matches the reference list — no hallucinated sources |
 | **Styled HTML report** | Auto-opens in your browser with clickable citations, DOI/Open Access links, dark mode, and a sticky TOC |
+| **Executive summary + charts** | HTML report opens with a 100-150 word TL;DR plus inline SVG charts (year histogram, categories, sources) |
+| **Replay mode** | Re-run synthesis on an existing folder via `--replay` or the TUI — papers.json stays cached, outputs are versioned |
 | **BibTeX + CSV + JSON** | Ready for LaTeX/Overleaf, Excel, or your own tooling |
 | **Interactive TUI** | Type a question in plain English — no shell quoting, no flags |
 | **Runs locally** | Use Ollama and your queries never leave your machine |

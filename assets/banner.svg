@@ -1,0 +1,121 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 320" width="1200" height="320" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f0b1e"/>
+      <stop offset="1" stop-color="#1a1030"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#8b5cf6"/>
+      <stop offset="0.5" stop-color="#ec4899"/>
+      <stop offset="1" stop-color="#14b8a6"/>
+    </linearGradient>
+    <linearGradient id="paper" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.02"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="12" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- background -->
+  <rect width="1200" height="320" fill="url(#bg)"/>
+
+  <!-- faint grid -->
+  <g stroke="#ffffff" stroke-opacity="0.04" stroke-width="1">
+    <path d="M0 80 H1200 M0 160 H1200 M0 240 H1200"/>
+    <path d="M100 0 V320 M200 0 V320 M300 0 V320 M400 0 V320 M500 0 V320 M600 0 V320 M700 0 V320 M800 0 V320 M900 0 V320 M1000 0 V320 M1100 0 V320"/>
+  </g>
+
+  <!-- glowing accent bar along top -->
+  <rect x="0" y="0" width="1200" height="3" fill="url(#accent)" filter="url(#glow)"/>
+
+  <!-- stacked "paper" cards on the right, suggesting a literature corpus -->
+  <g transform="translate(820, 60)">
+    <g transform="rotate(-8 160 100)">
+      <rect x="40" y="20" width="220" height="160" rx="8" fill="url(#paper)" stroke="#8b5cf6" stroke-opacity="0.5"/>
+      <rect x="60" y="44" width="140" height="6" rx="3" fill="#8b5cf6" fill-opacity="0.6"/>
+      <rect x="60" y="60" width="180" height="4" rx="2" fill="#ffffff" fill-opacity="0.25"/>
+      <rect x="60" y="72" width="160" height="4" rx="2" fill="#ffffff" fill-opacity="0.20"/>
+      <rect x="60" y="84" width="170" height="4" rx="2" fill="#ffffff" fill-opacity="0.18"/>
+      <rect x="60" y="96" width="120" height="4" rx="2" fill="#ffffff" fill-opacity="0.15"/>
+    </g>
+    <g transform="rotate(4 180 110)">
+      <rect x="60" y="30" width="220" height="170" rx="8" fill="url(#paper)" stroke="#ec4899" stroke-opacity="0.55"/>
+      <rect x="80" y="54" width="120" height="6" rx="3" fill="#ec4899" fill-opacity="0.7"/>
+      <rect x="80" y="72" width="180" height="4" rx="2" fill="#ffffff" fill-opacity="0.28"/>
+      <rect x="80" y="84" width="170" height="4" rx="2" fill="#ffffff" fill-opacity="0.22"/>
+      <rect x="80" y="96" width="150" height="4" rx="2" fill="#ffffff" fill-opacity="0.18"/>
+      <rect x="80" y="108" width="160" height="4" rx="2" fill="#ffffff" fill-opacity="0.15"/>
+      <!-- tiny bar chart -->
+      <g transform="translate(80, 128)">
+        <rect x="0" y="24" width="10" height="20" fill="#8b5cf6"/>
+        <rect x="14" y="12" width="10" height="32" fill="#ec4899"/>
+        <rect x="28" y="18" width="10" height="26" fill="#14b8a6"/>
+        <rect x="42" y="4" width="10" height="40" fill="#f59e0b"/>
+        <rect x="56" y="20" width="10" height="24" fill="#06b6d4"/>
+      </g>
+    </g>
+    <g transform="rotate(-2 200 120)">
+      <rect x="90" y="44" width="220" height="170" rx="8" fill="url(#paper)" stroke="#14b8a6" stroke-opacity="0.6"/>
+      <rect x="110" y="68" width="160" height="6" rx="3" fill="#14b8a6" fill-opacity="0.8"/>
+      <!-- donut -->
+      <g transform="translate(200, 150)">
+        <circle r="36" fill="none" stroke="#ffffff" stroke-opacity="0.1" stroke-width="10"/>
+        <circle r="36" fill="none" stroke="#8b5cf6" stroke-width="10" stroke-dasharray="80 226" transform="rotate(-90)"/>
+        <circle r="36" fill="none" stroke="#ec4899" stroke-width="10" stroke-dasharray="60 226" stroke-dashoffset="-80" transform="rotate(-90)"/>
+        <circle r="36" fill="none" stroke="#14b8a6" stroke-width="10" stroke-dasharray="40 226" stroke-dashoffset="-140" transform="rotate(-90)"/>
+      </g>
+    </g>
+  </g>
+
+  <!-- left side text block -->
+  <g transform="translate(70, 108)">
+    <!-- accent tag -->
+    <g>
+      <rect x="0" y="0" width="108" height="22" rx="11" fill="none" stroke="url(#accent)" stroke-width="1.5"/>
+      <text x="54" y="15" font-size="11" font-weight="600" fill="#e5e7eb" text-anchor="middle" letter-spacing="1.2">v0.7.0 · 134 TESTS</text>
+    </g>
+
+    <!-- title -->
+    <text x="0" y="78" font-size="64" font-weight="800" fill="#ffffff" letter-spacing="-1.5">Deep</text>
+    <text x="180" y="78" font-size="64" font-weight="800" fill="url(#accent)" letter-spacing="-1.5">Researcher</text>
+
+    <!-- tagline -->
+    <text x="0" y="118" font-size="18" font-weight="400" fill="#c4b5fd" letter-spacing="0.2">
+      Agentic literature reviews from your terminal.
+    </text>
+    <text x="0" y="144" font-size="14" font-weight="400" fill="#9ca3af">
+      Google Scholar · OpenAlex · Unpaywall · Claude / Ollama / OpenAI · self-contained HTML report
+    </text>
+
+    <!-- pipeline chips -->
+    <g transform="translate(0, 172)" font-size="12" font-weight="500">
+      <g>
+        <rect x="0" y="0" width="68" height="24" rx="12" fill="#8b5cf6" fill-opacity="0.18" stroke="#8b5cf6" stroke-opacity="0.6"/>
+        <text x="34" y="16" fill="#c4b5fd" text-anchor="middle">search</text>
+      </g>
+      <text x="76" y="16" fill="#6b7280">→</text>
+      <g transform="translate(90, 0)">
+        <rect x="0" y="0" width="68" height="24" rx="12" fill="#ec4899" fill-opacity="0.18" stroke="#ec4899" stroke-opacity="0.6"/>
+        <text x="34" y="16" fill="#fbcfe8" text-anchor="middle">enrich</text>
+      </g>
+      <text x="166" y="16" fill="#6b7280">→</text>
+      <g transform="translate(180, 0)">
+        <rect x="0" y="0" width="80" height="24" rx="12" fill="#14b8a6" fill-opacity="0.18" stroke="#14b8a6" stroke-opacity="0.6"/>
+        <text x="40" y="16" fill="#99f6e4" text-anchor="middle">categorize</text>
+      </g>
+      <text x="268" y="16" fill="#6b7280">→</text>
+      <g transform="translate(282, 0)">
+        <rect x="0" y="0" width="80" height="24" rx="12" fill="#f59e0b" fill-opacity="0.18" stroke="#f59e0b" stroke-opacity="0.6"/>
+        <text x="40" y="16" fill="#fde68a" text-anchor="middle">synthesize</text>
+      </g>
+      <text x="370" y="16" fill="#6b7280">→</text>
+      <g transform="translate(384, 0)">
+        <rect x="0" y="0" width="60" height="24" rx="12" fill="#06b6d4" fill-opacity="0.18" stroke="#06b6d4" stroke-opacity="0.6"/>
+        <text x="30" y="16" fill="#a5f3fc" text-anchor="middle">report</text>
+      </g>
+    </g>
+  </g>
+</svg>
