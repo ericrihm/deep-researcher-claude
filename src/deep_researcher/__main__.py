@@ -299,6 +299,12 @@ def main() -> None:
         metavar="FOLDER",
         help="Re-run synthesis on an existing output folder without re-searching",
     )
+    parser.add_argument(
+        "--compare",
+        nargs=2,
+        metavar=("PROVIDER_A", "PROVIDER_B"),
+        help="Compare two providers on the same corpus (e.g., --compare claude groq)",
+    )
     parser.add_argument("--provider", choices=list(PROVIDERS.keys()), help="LLM provider (auto-configures base URL and model)")
     parser.add_argument("--model", default=None, help="LLM model name")
     parser.add_argument("--base-url", default=None, help="OpenAI-compatible API base URL")
@@ -322,6 +328,21 @@ def main() -> None:
 
     if args.replay and args.query:
         parser.error("--replay and a query are mutually exclusive")
+
+    if args.compare and args.replay:
+        parser.error("--compare and --replay are mutually exclusive")
+    if args.compare and not args.query:
+        parser.error("--compare requires a query argument")
+    if args.compare:
+        for prov in args.compare:
+            if prov not in PROVIDERS:
+                parser.error(f"Unknown provider '{prov}'. Choose from: {', '.join(PROVIDERS.keys())}")
+        for prov in args.compare:
+            if prov in ("claude", "chatgpt") and prov != args.provider:
+                parser.error(
+                    f"--compare with '{prov}' requires --provider {prov} "
+                    f"(OAuth providers need explicit auth setup)"
+                )
 
     if args.verbose:
         import logging
@@ -493,6 +514,11 @@ def main() -> None:
                           f"PowerShell: [cyan]$env:OPENAI_API_KEY = \"YOUR_KEY\"[/cyan]")
             sys.exit(1)
 
+    if args.compare:
+        _run_compare(console, config, args.query, args.compare[0], args.compare[1],
+                     open_html=not args.no_open)
+        return
+
     _run_pipeline(console, config, args.query, open_html=not args.no_open)
 
 
@@ -575,6 +601,44 @@ def _run_replay(console: Console, config: Config, folder: str, *, open_html: boo
         sys.exit(1)
     except KeyboardInterrupt:
         console.print("\n[yellow]Replay interrupted.[/yellow]")
+        sys.exit(1)
+    finally:
+        signal.signal(signal.SIGINT, prev_handler)
+
+
+def _run_compare(
+    console: Console,
+    config: Config,
+    query: str,
+    provider_a: str,
+    provider_b: str,
+    *,
+    open_html: bool = True,
+) -> None:
+    """Run dual-provider comparison."""
+    console.print(f"[dim]Comparing: {provider_a} vs {provider_b}[/dim]")
+
+    orchestrator = Orchestrator(config)
+
+    def _on_interrupt(signum, frame):
+        orchestrator.cancel()
+
+    prev_handler = signal.signal(signal.SIGINT, _on_interrupt)
+    try:
+        report_a, report_b = orchestrator.compare_research(
+            query, provider_a, provider_b, PROVIDERS,
+        )
+        if report_a or report_b:
+            console.print("\n[green]Comparison complete.[/green]")
+        html_path = orchestrator.last_report_paths.get("html")
+        if html_path and open_html and os.path.exists(html_path):
+            import webbrowser
+            try:
+                webbrowser.open("file://" + os.path.abspath(html_path))
+            except Exception as e:
+                console.print(f"[yellow]Could not auto-open compare.html: {e}[/yellow]")
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Comparison interrupted.[/yellow]")
         sys.exit(1)
     finally:
         signal.signal(signal.SIGINT, prev_handler)
