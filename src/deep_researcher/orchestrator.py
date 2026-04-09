@@ -33,6 +33,7 @@ from deep_researcher.tools.enrichment import EnrichmentTool
 from deep_researcher.tools.executive_summary import ExecutiveSummaryTool
 from deep_researcher.tools.fallback_synthesis import FallbackSynthesisTool
 from deep_researcher.tools.scholar_search import ScholarSearchTool
+from deep_researcher.tools.scopus import ScopusSearchTool
 from deep_researcher.tools.synthesize import SynthesisTool
 
 logger = logging.getLogger("deep_researcher")
@@ -58,6 +59,15 @@ class Orchestrator:
         llm = make_llm_client(config)
         self._search_tool = ScholarSearchTool()
         self._search_tool.set_year_range(config.start_year, config.end_year)
+
+        # Scopus (Elsevier) runs as a second search pass alongside Scholar.
+        # config.scopus_api_key is resolved by __main__'s _setup_elsevier()
+        # before Orchestrator is constructed, so it always holds either the
+        # user's key or the bundled default (unless no_elsevier is True, in
+        # which case _run_search skips it entirely).
+        self._scopus_tool = ScopusSearchTool(api_key=config.scopus_api_key)
+        self._scopus_tool.set_year_range(config.start_year, config.end_year)
+
         self._enrichment_tool = EnrichmentTool()
         self._clarify_tool = ClarifyTool(llm=llm)
         self._categorize_tool = CategorizeTool(llm=llm)
@@ -221,7 +231,7 @@ class Orchestrator:
     # ------------------------------------------------------------------
 
     def _run_search(self, state: PipelineState) -> PipelineState:
-        """Phase 1: Search Google Scholar via tool."""
+        """Phase 1: Search Google Scholar, then (optionally) Scopus."""
         result = self._search_tool.safe_execute(
             query=state.query,
             cancel=self._cancel,
@@ -232,7 +242,31 @@ class Orchestrator:
             if key not in papers:
                 papers[key] = paper
 
-        self.console.print(f"  [green]Found {len(papers)} papers[/green]")
+        scholar_count = len(papers)
+
+        if not self.config.no_elsevier:
+            scopus_result = self._scopus_tool.safe_execute(
+                query=state.query,
+                cancel=self._cancel,
+            )
+            new_from_scopus = 0
+            for paper in scopus_result.papers:
+                key = paper.unique_key
+                if key not in papers:
+                    papers[key] = paper
+                    new_from_scopus += 1
+            if new_from_scopus:
+                self.console.print(
+                    f"  [green]Found {scholar_count} papers on Scholar + "
+                    f"{new_from_scopus} new on Scopus[/green]"
+                )
+            else:
+                self.console.print(
+                    f"  [green]Found {scholar_count} papers[/green]"
+                )
+        else:
+            self.console.print(f"  [green]Found {scholar_count} papers[/green]")
+
         return state.evolve(papers=papers)
 
     def _run_enrichment(self, state: PipelineState) -> PipelineState:

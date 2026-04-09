@@ -24,6 +24,8 @@ class TestOrchestrator:
 
         # Mock tools
         orch._search_tool = MagicMock()
+        orch._scopus_tool = MagicMock()
+        orch._scopus_tool.safe_execute.return_value = ToolResult(text="", papers=[])
         orch._enrichment_tool = MagicMock()
         orch._categorize_tool = MagicMock()
         orch._synthesize_tool = MagicMock()
