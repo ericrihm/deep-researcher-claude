@@ -21,10 +21,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+mcp = ["mcp[cli]>=1.0.0"]
 dev = ["pytest>=8.0.0"]
 
 [project.scripts]
 deep-researcher = "deep_researcher.__main__:main"
+deep-researcher-mcp = "deep_researcher.mcp_server:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
