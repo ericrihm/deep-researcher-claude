@@ -84,3 +84,79 @@ def test_chatgpt_auth_error_is_distinct_exception():
     from deep_researcher.auth_chatgpt import ChatGPTAuthError
     with pytest.raises(ChatGPTAuthError):
         raise ChatGPTAuthError("nope")
+
+
+def test_stored_auth_path_is_under_deep_researcher(tmp_path, monkeypatch):
+    from deep_researcher.auth_chatgpt import _stored_auth_path
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    p = _stored_auth_path()
+    assert p.name == "chatgpt-auth.json"
+    assert ".deep-researcher" in str(p)
+
+
+def test_tier2_reads_stored_token(tmp_path, monkeypatch):
+    from deep_researcher.auth_chatgpt import _try_stored_token
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    f = tmp_path / ".deep-researcher" / "chatgpt-auth.json"
+    _write_auth_file(f)
+    auth = _try_stored_token()
+    assert auth is not None and auth.access_token == "tok"
+
+
+def test_save_auth_file_creates_directory_and_writes_atomically(tmp_path, monkeypatch):
+    from deep_researcher.auth_chatgpt import _save_auth_file
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    target = tmp_path / ".deep-researcher" / "chatgpt-auth.json"
+    _save_auth_file(target, {
+        "access_token": "new",
+        "refresh_token": "newref",
+        "expires_at": int(time.time()) + 3600,
+    })
+    assert target.exists()
+    assert json.loads(target.read_text())["access_token"] == "new"
+
+
+def test_ensure_fresh_returns_unchanged_when_token_valid(tmp_path, monkeypatch):
+    from deep_researcher.auth_chatgpt import ChatGPTAuth, _ensure_fresh
+    f = tmp_path / "auth.json"
+    _write_auth_file(f, expires_in=3600)
+    auth = ChatGPTAuth(
+        access_token="tok",
+        refresh_token="ref",
+        expires_at=int(time.time()) + 3600,
+        source_file=f,
+    )
+    refreshed = _ensure_fresh(auth)
+    assert refreshed.access_token == "tok"
+
+
+def test_ensure_fresh_calls_refresh_endpoint_when_expired(tmp_path, monkeypatch):
+    from deep_researcher.auth_chatgpt import ChatGPTAuth, _ensure_fresh
+    f = tmp_path / "auth.json"
+    _write_auth_file(f, expires_in=-10)
+    auth = ChatGPTAuth(
+        access_token="old",
+        refresh_token="ref",
+        expires_at=int(time.time()) - 10,
+        source_file=f,
+    )
+
+    fake_resp = MagicMock()
+    fake_resp.json.return_value = {
+        "access_token": "newtok",
+        "refresh_token": "newref",
+        "expires_in": 3600,
+    }
+    fake_resp.raise_for_status.return_value = None
+
+    with patch("deep_researcher.auth_chatgpt.httpx.post", return_value=fake_resp) as mock_post:
+        refreshed = _ensure_fresh(auth)
+
+    assert refreshed.access_token == "newtok"
+    assert refreshed.refresh_token == "newref"
+    mock_post.assert_called_once()
+    saved = json.loads(f.read_text())
+    assert saved["access_token"] == "newtok"
