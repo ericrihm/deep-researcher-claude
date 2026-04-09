@@ -6,6 +6,7 @@ import time
 from openai import APIError, APITimeoutError, OpenAI, RateLimitError
 from openai.types.chat import ChatCompletionMessage
 
+from deep_researcher.auth_chatgpt import ChatGPTAuth, _ensure_fresh
 from deep_researcher.config import Config
 from deep_researcher.constants import CHARS_PER_TOKEN
 from deep_researcher.errors import ToolCallingNotSupported
@@ -23,12 +24,19 @@ class LLMClient:
         )
         self.model = config.model
         self._max_retries = 3
+        # Optional ChatGPT OAuth handle — when set, we refresh the token
+        # before every chat() call so long-running pipelines don't die
+        # mid-run on a stale token.
+        self._chatgpt_auth: ChatGPTAuth | None = None
 
     def chat(
         self,
         messages: list[dict],
         tools: list[dict] | None = None,
     ) -> ChatCompletionMessage:
+        if self._chatgpt_auth is not None:
+            self._chatgpt_auth = _ensure_fresh(self._chatgpt_auth)
+            self.client.api_key = self._chatgpt_auth.access_token
         kwargs: dict = {
             "model": self.model,
             "messages": messages,
