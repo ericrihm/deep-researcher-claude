@@ -149,3 +149,39 @@ Rules:
 - Do NOT invent findings that aren't supported by the category list or top papers.
 - Do NOT start with "This review..." or "In recent years..." — get to the point.
 """
+
+COMPARISON_PROMPT = """\
+You are comparing two literature reviews written by different AI models on: "{query}"
+
+The corpus is identical ({paper_count} papers). Only the synthesis differs.
+
+## Review A ({provider_a})
+{report_a}
+
+## Review B ({provider_b})
+{report_b}
+
+Write a structured comparison covering:
+
+### Categorization Differences
+How did each model group the papers? Which categories overlap, which are unique?
+
+### Finding Contradictions
+Do the models reach different conclusions about any papers or trends? Be specific.
+
+### Citation Patterns
+Which model cited more papers? Did either miss important high-citation papers?
+Note any papers cited by one but not the other.
+
+### Writing Quality
+Which review is more specific and evidence-grounded? Which has more filler?
+Rate concreteness, accuracy to abstracts, and analytical depth.
+
+### Verdict
+In 2-3 sentences, which review would be more useful to a researcher and why?
+
+Rules:
+- Be specific. Quote or reference exact sections.
+- Do NOT pad with generalities.
+- If the reviews are nearly identical, say so.
+"""
