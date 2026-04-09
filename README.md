@@ -548,6 +548,12 @@ deep-researcher "your query" --model gemma4
 
 ## Changelog
 
+### 0.7.0
+
+- **New: Executive summary.** Every HTML report now opens with a 100-150 word LLM-written TL;DR paragraph, generated in parallel with the per-category synthesis so it adds no wall-clock time. HTML-only; the Markdown report is unchanged.
+- **New: Inline SVG charts.** A collapsible "At a glance" block above the report body shows a year histogram, a per-category bar chart, and a sources donut. Pure SVG + CSS, theme-aware, print-friendly, zero new dependencies.
+- **New: Replay mode.** Re-run synthesis on an existing output folder without re-searching: `deep-researcher --replay output/2026-04-08-crispr-off-targets`, or pick "r" from the TUI menu. Outputs are versioned (`report-2.md`, `report-2.html`) so prior runs are preserved.
+
 ### 0.6.0
 
 - **New: Styled HTML report.** Every run now writes a self-contained `report.html` into the output folder and auto-opens it in your default browser. Clickable `[N]` citations, DOI / Open Access / Publisher / Scholar links per reference, sticky TOC, light/dark mode, client-side reference search, per-entry Copy BibTeX button, print-friendly CSS. Zero new runtime dependencies. Pass `--no-open` to suppress the browser launch.
