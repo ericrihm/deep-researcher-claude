@@ -6,7 +6,7 @@
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10+-8b5cf6.svg?style=flat-square&labelColor=0f0b1e" alt="Python 3.10+"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-14b8a6.svg?style=flat-square&labelColor=0f0b1e" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/version-0.8.0-ec4899.svg?style=flat-square&labelColor=0f0b1e" alt="Version: 0.8.0">
-  <img src="https://img.shields.io/badge/tests-162%20passing-14b8a6.svg?style=flat-square&labelColor=0f0b1e" alt="Tests: 162 passing">
+  <img src="https://img.shields.io/badge/tests-193%20passing-14b8a6.svg?style=flat-square&labelColor=0f0b1e" alt="Tests: 193 passing">
 </p>
 
 <p align="center">
@@ -35,6 +35,7 @@ Deep Researcher searches **Google Scholar** for academically-ranked papers, enri
 | **Styled HTML report** | Auto-opens in your browser with clickable citations, DOI/Open Access links, dark mode, and a sticky TOC |
 | **Executive summary + charts** | HTML report opens with a 100-150 word TL;DR plus inline SVG charts (year histogram, categories, sources) |
 | **Replay mode** | Re-run synthesis on an existing folder via `--replay` or the TUI — papers.json stays cached, outputs are versioned |
+| **Dual-provider compare** | `--compare claude openai` runs search once, synthesizes with both providers in parallel, then produces a side-by-side HTML diff with LLM-generated comparison analysis |
 | **BibTeX + CSV + JSON** | Ready for LaTeX/Overleaf, Excel, or your own tooling |
 | **Interactive TUI** | Type a question in plain English — no shell quoting, no flags |
 | **Runs locally** | Use Ollama and your queries never leave your machine |
@@ -239,6 +240,18 @@ Pass the question and flags directly, skipping the TUI:
 deep-researcher "chatbots for cognitive behavioral therapy" --provider claude --start-year 2020
 ```
 
+### Compare two providers side-by-side
+
+Run search once, then synthesize with two different LLM providers in parallel. An LLM-generated comparison analysis highlights categorization differences, contradictions, citation patterns, and writing quality:
+
+```bash
+deep-researcher "CRISPR gene editing" --compare claude openai
+```
+
+This produces a `compare.html` with synced-scroll columns and a structured comparison summary. Each provider's full report is also saved in its own subfolder. Replay also works on compare folders — re-running synthesis without re-searching.
+
+The TUI offers the same feature via the **c** hotkey in the main menu.
+
 ### Run with Ollama (local, free, private)
 
 ```bash
@@ -309,6 +322,17 @@ output/2026-04-02-161823-large-language-models-for-automated-code/
 ├── papers.json      # Full metadata for every paper
 ├── papers.csv       # Same data as CSV
 └── metadata.json    # Research stats
+```
+
+A `--compare` run adds per-provider subdirectories and a comparison page:
+
+```
+output/2026-04-09-compare-crispr-gene-editing/
+├── claude/          # Full report set from provider A
+├── openai/          # Full report set from provider B
+├── compare.html     # Side-by-side HTML with comparison analysis
+├── papers.json      # Shared corpus
+└── metadata.json    # mode: "compare"
 ```
 
 ---
