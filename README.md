@@ -508,6 +508,32 @@ Create `~/.deep-researcher/config.json`:
 
 Priority: CLI args > environment variables > config file > defaults.
 
+### Elsevier / Scopus
+
+Deep Researcher searches Scopus (Elsevier) alongside Google Scholar by default. It ships with a bundled default API key as a courtesy — you'll see this on first run:
+
+> *Borrowing Eric's Elsevier API key for Scopus search...*
+
+For heavy use, **please grab your own free key** (2-minute signup, 20k requests/week quota):
+
+- Create a key: https://dev.elsevier.com/apikey/manage
+- API docs: https://dev.elsevier.com/sd_api_spec.html
+
+Override the bundled default in any of three ways:
+
+```bash
+# 1. CLI flag (highest precedence)
+deep-researcher "your query" --elsevier-key YOUR_KEY
+
+# 2. Environment variable
+export ELSEVIER_API_KEY=YOUR_KEY
+
+# 3. config.json
+echo '{"scopus_api_key": "YOUR_KEY"}' > ~/.deep-researcher/config.json
+```
+
+Skip Elsevier entirely with `--no-elsevier`.
+
 <details>
 <summary><strong>Environment variables</strong></summary>
 
