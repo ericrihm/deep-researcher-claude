@@ -9,32 +9,40 @@
 <p align="center">
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10+-blue.svg?style=flat-square" alt="Python 3.10+"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg?style=flat-square" alt="License: MIT"></a>
-  <img src="https://img.shields.io/badge/version-0.5.0-blue.svg?style=flat-square" alt="Version: 0.5.0">
+  <img src="https://img.shields.io/badge/version-0.6.0-blue.svg?style=flat-square" alt="Version: 0.6.0">
+  <img src="https://img.shields.io/badge/tests-95%20passing-brightgreen.svg?style=flat-square" alt="Tests: 95 passing">
 </p>
 
 <p align="center">
   <a href="#quick-start">Quick Start</a> &middot;
   <a href="#how-it-works">How It Works</a> &middot;
+  <a href="#html-report">HTML Report</a> &middot;
   <a href="#sample-output">Sample Output</a> &middot;
   <a href="#configuration">Configuration</a>
 </p>
 
 ---
 
-> **Fork notice.** This is a fork of [jackswl/deep-researcher](https://github.com/jackswl/deep-researcher) that adds an interactive TUI (no shell quoting required), a `--provider claude` option using Claude subscription OAuth via `claude login` (no API key), and Windows/PowerShell encoding fixes. The Google Scholar pipeline, OpenAlex enrichment, and synthesis architecture are all upstream's work — go star the [original repo](https://github.com/jackswl/deep-researcher).
+> **Fork notice.** This is a fork of [jackswl/deep-researcher](https://github.com/jackswl/deep-researcher) that adds an interactive TUI (no shell quoting required), a `--provider claude` option using Claude subscription OAuth via `claude login` (no API key), a styled self-contained **HTML report** that auto-opens in your browser, and Windows/PowerShell encoding fixes. The Google Scholar pipeline, OpenAlex enrichment, and synthesis architecture are all upstream's work — go star the [original repo](https://github.com/jackswl/deep-researcher).
 
 ---
 
-Deep Researcher searches **Google Scholar** for academically-ranked papers, enriches them with full metadata from **OpenAlex**, and uses a local LLM to write a **structured literature review** with consistent citations.
+Deep Researcher searches **Google Scholar** for academically-ranked papers, enriches them with full metadata from **OpenAlex**, and uses an LLM to write a **structured literature review** with consistent citations — then drops a beautiful, self-contained HTML report into your browser.
 
-- **100 papers** from Google Scholar's semantic search, no keyword hacks, no irrelevant results
-- **Full metadata**: DOIs, abstracts, journal names, citation counts, open access URLs
-- **Structured synthesis**: papers categorized by theme, with per-category analysis and cross-category patterns
-- **Consistent `[N]` citations**: every reference in the text matches the reference list
-- **BibTeX + CSV output** ready for LaTeX/Overleaf or Excel
-- **Runs locally** with Ollama. Your queries never leave your machine
-- **Tool-based agentic architecture** inspired by [Claude Code](https://github.com/anthropics/claude-code)
-- **4 dependencies**, no LangChain
+### Highlights
+
+|   |   |
+|---|---|
+| **100 papers** | Google Scholar semantic search — no keyword hacks, no irrelevant results |
+| **Structured synthesis** | Papers categorized by theme, with per-category analysis and cross-category patterns |
+| **Consistent `[N]` citations** | Every reference in the text matches the reference list — no hallucinated sources |
+| **Styled HTML report** | Auto-opens in your browser with clickable citations, DOI/Open Access links, dark mode, and a sticky TOC |
+| **BibTeX + CSV + JSON** | Ready for LaTeX/Overleaf, Excel, or your own tooling |
+| **Interactive TUI** | Type a question in plain English — no shell quoting, no flags |
+| **Runs locally** | Use Ollama and your queries never leave your machine |
+| **Claude subscription** | `--provider claude` uses your `claude login` OAuth — no API key |
+| **Agentic architecture** | Tool-based pipeline inspired by [Claude Code](https://github.com/anthropics/claude-code) |
+| **5 dependencies** | No LangChain, no framework soup |
 
 ---
 
@@ -268,11 +276,36 @@ Each run produces:
 
 ```
 output/2026-04-02-161823-large-language-models-for-automated-code/
-├── report.md        # Categorized literature review
+├── report.html      # Styled HTML report — auto-opens in your browser
+├── report.md        # Categorized literature review (Markdown)
 ├── references.bib   # BibTeX (import into LaTeX/Overleaf)
 ├── papers.json      # Full metadata for every paper
 ├── papers.csv       # Same data as CSV
 └── metadata.json    # Research stats
+```
+
+---
+
+## HTML Report
+
+Every run writes a **self-contained `report.html`** into the output folder and opens it in your default browser the moment synthesis finishes. One file, no external assets, no network required — archive it, email it, drop it in a Slack channel.
+
+### What's in the page
+
+- **Clickable `[N]` citations.** Every in-text citation is an anchor link that jumps to the matching reference, with a hover tooltip showing the paper title so you don't have to scroll.
+- **Rich reference entries.** Each reference carries the full set of outbound links — **DOI**, **Open Access** full-text, **Publisher** page, **arXiv**, **PubMed**, and a **Google Scholar** fallback search. Plus a per-reference **Copy BibTeX** button.
+- **Badges at a glance.** Open-access entries get an OA badge; citation counts show as a star badge so high-impact papers pop.
+- **Sticky sidebar TOC.** Auto-generated from the headings, with active-section highlighting as you scroll.
+- **Reference search.** Filter the reference list live by title, author, or year.
+- **Light & dark mode.** Auto-picks from your OS preference, with a manual toggle that persists across visits.
+- **Print-friendly.** A dedicated `@media print` stylesheet means Ctrl/Cmd-P gives you a clean PDF without the sidebar or buttons.
+- **Responsive.** The sidebar collapses on narrow screens.
+- **Zero runtime dependencies.** A tiny built-in Markdown-to-HTML converter handles only the constructs the synthesis pipeline emits, so there's no `markdown`/`mistune`/`marked` to install.
+
+Don't want the auto-open? Pass `--no-open`:
+
+```bash
+deep-researcher "your query" --provider claude --no-open
 ```
 
 ---
@@ -437,6 +470,7 @@ Options:
   --interactive          Ask clarifying questions before researching
   --output DIR           Output directory (default: ./output)
   --email EMAIL          Email for polite API access to OpenAlex/CrossRef
+  --no-open              Do not auto-open the HTML report in a browser
   --verbose              Enable debug logging
   --reset-auth           Clear stored auth state for the selected provider
   --show-advisory        Re-show the Claude OAuth policy notice
@@ -509,6 +543,20 @@ deep-researcher "your query" --model gemma4
 | Qwen 3.5 27B | `qwen3.5:27b` | Higher quality, needs 16GB+ VRAM |
 | Llama 4 Scout | `llama4:scout` | 10M context |
 | DeepSeek V3.2 | `deepseek-v3.2` | Strong reasoning |
+
+---
+
+## Changelog
+
+### 0.6.0
+
+- **New: Styled HTML report.** Every run now writes a self-contained `report.html` into the output folder and auto-opens it in your default browser. Clickable `[N]` citations, DOI / Open Access / Publisher / Scholar links per reference, sticky TOC, light/dark mode, client-side reference search, per-entry Copy BibTeX button, print-friendly CSS. Zero new runtime dependencies. Pass `--no-open` to suppress the browser launch.
+
+### 0.5.0
+
+- Year-range filter enforcement on Google Scholar results
+- Parallel per-category synthesis with progress callbacks
+- `Paper.merge()` now prefers the longer abstract
 
 ---
 
