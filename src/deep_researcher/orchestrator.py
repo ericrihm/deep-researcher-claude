@@ -8,7 +8,9 @@ Display and persistence are delegated to display.py and report.py.
 from __future__ import annotations
 
 import concurrent.futures
+import json
 import logging
+import os
 import threading
 
 from rich.console import Console
@@ -145,6 +147,71 @@ class Orchestrator:
 
         print_summary(self.console, state)
         paths = save_results(self.console, state, self.config.output_dir, self._output_folder or None)
+        if paths:
+            self.last_report_paths = paths
+        return state.report
+
+    def replay(self, folder: str) -> str:
+        """Re-run synthesis on an existing run's papers.json.
+
+        Skips search + enrich entirely. Loads papers.json + metadata.json,
+        reconstructs PipelineState, calls _run_synthesis(), saves versioned
+        outputs into the same folder. Returns the report markdown.
+        """
+        if not os.path.isdir(folder):
+            raise FileNotFoundError(f"Replay folder does not exist: {folder}")
+        papers_path = os.path.join(folder, "papers.json")
+        if not os.path.exists(papers_path):
+            raise FileNotFoundError(
+                f"No papers.json in {folder} — is this a deep-researcher output folder?"
+            )
+        try:
+            with open(papers_path, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Malformed papers.json in {folder}: {e}") from e
+
+        # Defensive rehydration — drop unknown keys so a newer-version
+        # corpus can still be replayed on an older install.
+        known = set(Paper.__dataclass_fields__.keys())
+        rehydrated: list[Paper] = []
+        for d in raw:
+            if not isinstance(d, dict):
+                continue
+            rehydrated.append(Paper(**{k: v for k, v in d.items() if k in known}))
+
+        # Pick up the original query from metadata.json when available.
+        query = ""
+        meta_path = os.path.join(folder, "metadata.json")
+        if os.path.exists(meta_path):
+            try:
+                with open(meta_path, "r", encoding="utf-8") as f:
+                    meta = json.load(f)
+                query = (meta.get("query") or "").strip()
+            except Exception:
+                self.console.print(
+                    f"  [yellow]Could not read metadata.json in {folder} — "
+                    f"using folder name as query.[/yellow]"
+                )
+        if not query:
+            from deep_researcher.report import _make_slug
+            base = os.path.basename(os.path.normpath(folder)) or "replay"
+            query = _make_slug(base).replace("-", " ") or "replay"
+
+        self.console.print(Panel(
+            f"[bold]Replay:[/bold] {query}\n[dim]Folder:[/dim] {folder}",
+            title="Deep Researcher — Replay",
+            border_style="blue",
+        ))
+
+        state = PipelineState(query=query, papers={p.unique_key: p for p in rehydrated})
+        self._output_folder = folder
+
+        self.console.print(f"\n[bold blue]Re-running synthesis on {len(state.papers)} papers...[/bold blue]")
+        state = self._run_synthesis(state)
+
+        print_summary(self.console, state)
+        paths = save_results(self.console, state, self.config.output_dir, folder)
         if paths:
             self.last_report_paths = paths
         return state.report
