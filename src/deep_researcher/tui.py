@@ -10,6 +10,8 @@ be mistaken for real input, no env-var shenanigans.
 """
 from __future__ import annotations
 
+import json
+import os
 from typing import Optional
 
 from rich.console import Console
@@ -40,6 +42,107 @@ def _settings_table(config: Config, provider_name: str, query: str) -> Table:
     t.add_row("Email (polite APIs)", config.email or "[dim](none)[/dim]")
     t.add_row("Output folder", config.output_dir)
     return t
+
+
+def list_recent_runs(output_dir: str, limit: int = 10) -> list[dict]:
+    """Return up to `limit` most recent valid output folders.
+
+    Each dict: {'path', 'mtime', 'query', 'paper_count'}.
+    Skips folders without a papers.json. Reads metadata.json for
+    query + paper_count; falls back to folder slug + json length if
+    metadata is missing.
+    """
+    if not os.path.isdir(output_dir):
+        return []
+    entries: list[dict] = []
+    for name in os.listdir(output_dir):
+        folder = os.path.join(output_dir, name)
+        if not os.path.isdir(folder):
+            continue
+        papers_path = os.path.join(folder, "papers.json")
+        if not os.path.exists(papers_path):
+            continue
+        try:
+            mtime = os.path.getmtime(folder)
+        except OSError:
+            continue
+        query = ""
+        paper_count = 0
+        meta_path = os.path.join(folder, "metadata.json")
+        if os.path.exists(meta_path):
+            try:
+                with open(meta_path, "r", encoding="utf-8") as f:
+                    meta = json.load(f)
+                query = (meta.get("query") or "").strip()
+                paper_count = int(meta.get("total_papers") or 0)
+            except Exception:
+                pass
+        if not paper_count:
+            try:
+                with open(papers_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if isinstance(data, list):
+                    paper_count = len(data)
+            except Exception:
+                pass
+        if not query:
+            # Derive from folder name; strip timestamp prefix if present
+            base = name
+            parts = base.split("-", 4)
+            if len(parts) >= 5 and parts[0].isdigit():
+                base = parts[-1]
+            query = base.replace("-", " ") or "(unknown)"
+        entries.append({
+            "path": folder,
+            "mtime": mtime,
+            "query": query,
+            "paper_count": paper_count,
+        })
+    entries.sort(key=lambda e: -e["mtime"])
+    return entries[:limit]
+
+
+def _replay_submenu(console: Console, output_dir: str) -> Optional[str]:
+    """Render the recent-runs list and return the chosen folder path, or None."""
+    from datetime import datetime
+    runs = list_recent_runs(output_dir, limit=10)
+    if not runs:
+        console.print(
+            f"\n[yellow]No past runs found in {output_dir}.[/yellow] "
+            f"[dim]Press Enter to go back.[/dim]"
+        )
+        try:
+            Prompt.ask("  >", default="", show_default=False)
+        except (KeyboardInterrupt, EOFError):
+            pass
+        return None
+
+    console.print("\n[bold]Recent runs[/bold] [dim](newest first)[/dim]")
+    for i, r in enumerate(runs, 1):
+        ts = datetime.fromtimestamp(r["mtime"]).strftime("%Y-%m-%d %H:%M")
+        q = r["query"]
+        if len(q) > 48:
+            q = q[:47] + "…"
+        console.print(
+            f"  [cyan]{i:>2}[/cyan]  [dim]{ts}[/dim]  "
+            f"{q}  [dim]({r['paper_count']} papers)[/dim]"
+        )
+    console.print("  [dim]Enter a number, or b to go back.[/dim]")
+    try:
+        raw = Prompt.ask("  >", default="b", show_default=False).strip().lower()
+    except (KeyboardInterrupt, EOFError):
+        return None
+    if raw in ("", "b", "back"):
+        return None
+    try:
+        idx = int(raw)
+    except ValueError:
+        console.print("[yellow]Not a number — going back.[/yellow]")
+        return None
+    if not (1 <= idx <= len(runs)):
+        console.print("[yellow]Out of range — going back.[/yellow]")
+        return None
+    return runs[idx - 1]["path"]
 
 
 def _ask_question(console: Console, current: str) -> str:
@@ -110,7 +213,7 @@ def _ask_output_dir(console: Console, current: str) -> str:
     return Prompt.ask("  >", default=current, show_default=True).strip() or current
 
 
-def run(console: Console, providers: dict) -> Optional[tuple[str, Config, str]]:
+def run(console: Console, providers: dict) -> Optional[tuple]:
     """Run the interactive TUI.
 
     Returns (query, config, provider_name) when the user chooses to start
@@ -194,6 +297,7 @@ def run(console: Console, providers: dict) -> Optional[tuple[str, Config, str]]:
         console.print(
             "  [cyan]5[/cyan] Email   "
             "[cyan]6[/cyan] Output folder   "
+            "[cyan]r[/cyan] Replay past run   "
             "[red]q[/red] Quit"
         )
         try:
@@ -231,6 +335,19 @@ def run(console: Console, providers: dict) -> Optional[tuple[str, Config, str]]:
             config.email = _ask_email(console, config.email)
         elif choice == "6":
             config.output_dir = _ask_output_dir(console, config.output_dir)
+        elif choice == "r":
+            picked = _replay_submenu(console, config.output_dir)
+            if picked is not None:
+                save_state(
+                    last_query=query,
+                    last_provider=provider_name,
+                    last_model=config.model,
+                    last_start_year=config.start_year,
+                    last_end_year=config.end_year,
+                    last_email=config.email,
+                    last_output_dir=config.output_dir,
+                )
+                return ("__replay__", picked, config, provider_name)
         elif choice in ("q", "quit", "exit"):
             console.print("[dim]Bye.[/dim]")
             return None
