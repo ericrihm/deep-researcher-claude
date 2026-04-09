@@ -177,3 +177,12 @@ class TestToolResultData:
     def test_data_field_with_value(self):
         result = ToolResult(text="ok", data={"categories": {"A": [0, 1]}})
         assert result.data["categories"]["A"] == [0, 1]
+
+
+def test_pipeline_state_has_exec_summary_field():
+    from deep_researcher.models import PipelineState
+    s = PipelineState(query="q")
+    assert s.exec_summary == ""
+    s2 = s.evolve(exec_summary="hello")
+    assert s2.exec_summary == "hello"
+    assert s.exec_summary == ""  # original unchanged

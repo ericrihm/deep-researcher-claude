@@ -178,6 +178,7 @@ class PipelineState:
     category_sections: list[tuple[str, str]] = field(default_factory=list)
     cross_section: str = ""
     report: str = ""
+    exec_summary: str = ""
 
     def evolve(self, **kwargs: Any) -> PipelineState:
         """Return a new PipelineState with specified fields replaced.
