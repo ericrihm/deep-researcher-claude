@@ -18,3 +18,7 @@ output/
 docs/
 .claude/
 .pytest_cache/
+
+# AI assistant config
+CLAUDE.md
+.claude/
