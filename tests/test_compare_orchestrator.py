@@ -10,6 +10,7 @@ import pytest
 
 from deep_researcher.config import Config
 from deep_researcher.models import Paper, PipelineState, ToolResult
+from deep_researcher.profiles import get_profile
 
 
 # ---------------------------------------------------------------------------
@@ -59,14 +60,18 @@ def _make_orchestrator(tmp_path=None):
     orch._cancel = threading.Event()
     orch._output_folder = ""
     orch.last_report_paths = {}
+    orch._profile = get_profile("default")
 
-    # Search tool returns papers
+    # Search tools — profile-driven list
     papers = _make_papers()
     search_result = ToolResult(text="Found 3 papers", papers=list(papers.values()))
-    orch._search_tool = MagicMock()
-    orch._search_tool.safe_execute.return_value = search_result
-    orch._scopus_tool = MagicMock()
-    orch._scopus_tool.safe_execute.return_value = ToolResult(text="", papers=[])
+    mock_scholar = MagicMock()
+    mock_scholar.name = "scholar_search"
+    mock_scholar.safe_execute.return_value = search_result
+    mock_scopus = MagicMock()
+    mock_scopus.name = "search_scopus"
+    mock_scopus.safe_execute.return_value = ToolResult(text="", papers=[])
+    orch._search_tools = [mock_scholar, mock_scopus]
 
     # Enrichment tool: return the same papers unchanged
     orch._enrichment_tool = MagicMock()
@@ -119,7 +124,7 @@ def test_search_runs_only_once(tmp_path):
                        return_value=_make_synth_state()):
                 orch.compare_research("test query", "openai", "groq", _PROVIDERS)
 
-    assert orch._search_tool.safe_execute.call_count == 1
+    assert orch._search_tools[0].safe_execute.call_count == 1
     assert orch._enrichment_tool.safe_execute.call_count == 1
 
 
@@ -253,8 +258,8 @@ def test_no_papers_returns_early(tmp_path):
     """If search finds no papers, return early with placeholder strings."""
     orch = _make_orchestrator(tmp_path)
     # Override search to return nothing
-    orch._search_tool.safe_execute.return_value = ToolResult(text="", papers=[])
-    orch._scopus_tool.safe_execute.return_value = ToolResult(text="", papers=[])
+    for tool in orch._search_tools:
+        tool.safe_execute.return_value = ToolResult(text="", papers=[])
 
     with patch("deep_researcher.orchestrator.make_llm_client", return_value=MagicMock()):
         result = orch.compare_research("empty query", "openai", "groq", _PROVIDERS)
