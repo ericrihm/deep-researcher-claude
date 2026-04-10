@@ -10,6 +10,7 @@ import pytest
 
 from deep_researcher.config import Config
 from deep_researcher.models import Paper, ToolResult
+from deep_researcher.profiles import get_profile
 
 
 def _make_orchestrator():
@@ -20,8 +21,9 @@ def _make_orchestrator():
     orch._cancel = threading.Event()
     orch._output_folder = ""
     orch.last_report_paths = {}
+    orch._profile = get_profile("default")
+    orch._search_tools = []
 
-    orch._search_tool = MagicMock()
     orch._enrichment_tool = MagicMock()
     orch._categorize_tool = MagicMock()
     orch._categorize_tool.safe_execute.return_value = ToolResult(

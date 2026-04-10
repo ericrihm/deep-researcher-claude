@@ -9,6 +9,7 @@ from deep_researcher.tools.clarify import ClarifyTool
 from deep_researcher.tools.core_search import CoreSearchTool
 from deep_researcher.tools.cross_analysis import CrossAnalysisTool
 from deep_researcher.tools.crossref import CrossrefSearchTool
+from deep_researcher.tools.dblp import DblpSearchTool
 from deep_researcher.tools.enrichment import EnrichmentTool
 from deep_researcher.tools.fallback_synthesis import FallbackSynthesisTool
 from deep_researcher.tools.ieee_xplore import IEEEXploreSearchTool
@@ -39,6 +40,7 @@ def build_tool_registry(config: Config, llm: LLMClient | None = None) -> ToolReg
         ArxivSearchTool(),
         OpenAlexSearchTool(email=config.email),
         CrossrefSearchTool(email=config.email),
+        DblpSearchTool(),
         PubMedSearchTool(),
         CoreSearchTool(api_key=config.core_api_key),
         ScopusSearchTool(api_key=config.scopus_api_key),

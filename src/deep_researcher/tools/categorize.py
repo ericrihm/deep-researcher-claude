@@ -26,8 +26,13 @@ class CategorizeTool(Tool):
     quality_tier = 1
     parameters = {"type": "object", "properties": {}, "required": []}
 
-    def __init__(self, llm: LLMClient | None = None) -> None:
+    def __init__(
+        self,
+        llm: LLMClient | None = None,
+        prompt_template: str | None = None,
+    ) -> None:
         self._llm = llm
+        self._prompt_template = prompt_template or CATEGORIZE_PROMPT
 
     def execute(
         self,
@@ -55,7 +60,7 @@ class CategorizeTool(Tool):
                 abstract = f"\n   Abstract: {p.abstract}" if p.abstract else ""
                 lines.append(f"{global_idx + 1}. {p.title} ({author}, {year}{cites}){abstract}")
 
-            prompt = CATEGORIZE_PROMPT.format(
+            prompt = self._prompt_template.format(
                 count=len(batch),
                 query=query,
                 paper_list="\n".join(lines),

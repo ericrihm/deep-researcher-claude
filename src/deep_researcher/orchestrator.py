@@ -25,18 +25,99 @@ from deep_researcher.constants import (
 from deep_researcher.display import print_summary, save_results
 from deep_researcher.llm_factory import make_llm_client
 from deep_researcher.models import Paper, PipelineState
+from deep_researcher.profiles import get_profile, SearchProfile
 from deep_researcher.report import get_output_folder, save_checkpoint
+from deep_researcher.tools.base import Tool
 from deep_researcher.tools.categorize import CategorizeTool
 from deep_researcher.tools.clarify import ClarifyTool
 from deep_researcher.tools.cross_analysis import CrossAnalysisTool
 from deep_researcher.tools.enrichment import EnrichmentTool
 from deep_researcher.tools.executive_summary import ExecutiveSummaryTool
 from deep_researcher.tools.fallback_synthesis import FallbackSynthesisTool
-from deep_researcher.tools.scholar_search import ScholarSearchTool
-from deep_researcher.tools.scopus import ScopusSearchTool
 from deep_researcher.tools.synthesize import SynthesisTool
 
 logger = logging.getLogger("deep_researcher")
+
+
+# -- Search tool factory ----------------------------------------------------
+
+def _build_search_tools(config: Config, profile: SearchProfile) -> list[Tool]:
+    """Instantiate the search tools specified by the active profile.
+
+    Tools that require API keys are silently skipped when the key is missing,
+    so the profile degrades gracefully instead of failing.
+    """
+    from deep_researcher.tools.scholar_search import ScholarSearchTool
+    from deep_researcher.tools.scopus import ScopusSearchTool
+    from deep_researcher.tools.semantic_scholar import SemanticScholarSearchTool
+    from deep_researcher.tools.arxiv_search import ArxivSearchTool
+    from deep_researcher.tools.dblp import DblpSearchTool
+    from deep_researcher.tools.ieee_xplore import IEEEXploreSearchTool
+    from deep_researcher.tools.pubmed import PubMedSearchTool
+    from deep_researcher.tools.core_search import CoreSearchTool
+    from deep_researcher.tools.openalex import OpenAlexSearchTool
+    from deep_researcher.tools.crossref import CrossrefSearchTool
+
+    # Map profile source names → (class, kwargs)
+    source_map: dict[str, tuple[type, dict]] = {
+        "scholar": (ScholarSearchTool, {}),
+        "scopus": (ScopusSearchTool, {"api_key": config.scopus_api_key}),
+        "semantic_scholar": (SemanticScholarSearchTool, {}),
+        "arxiv": (ArxivSearchTool, {}),
+        "dblp": (DblpSearchTool, {}),
+        "ieee": (IEEEXploreSearchTool, {"api_key": config.ieee_api_key}),
+        "pubmed": (PubMedSearchTool, {}),
+        "core": (CoreSearchTool, {"api_key": config.core_api_key}),
+        "openalex": (OpenAlexSearchTool, {"email": config.email}),
+        "crossref": (CrossrefSearchTool, {"email": config.email}),
+    }
+
+    tools: list[Tool] = []
+    for source_name in profile.search_sources:
+        # Respect --no-elsevier
+        if source_name == "scopus" and config.no_elsevier:
+            continue
+
+        entry = source_map.get(source_name)
+        if entry is None:
+            logger.warning("Unknown search source in profile: %s", source_name)
+            continue
+
+        cls, kwargs = entry
+        tool = cls(**kwargs)
+        tool.set_year_range(config.start_year, config.end_year)
+        tools.append(tool)
+
+    return tools
+
+
+# -- Prompt selection --------------------------------------------------------
+
+def _get_prompts(profile: SearchProfile) -> dict[str, str]:
+    """Return the prompt templates for the active profile's prompt_style."""
+    from deep_researcher.prompts import (
+        CATEGORIZE_PROMPT,
+        CATEGORY_SYNTHESIS_PROMPT,
+        CROSS_CATEGORY_PROMPT,
+    )
+
+    if profile.prompt_style == "security":
+        from deep_researcher.prompts import (
+            SECURITY_CATEGORIZE_PROMPT,
+            SECURITY_SYNTHESIS_PROMPT,
+            SECURITY_CROSS_CATEGORY_PROMPT,
+        )
+        return {
+            "categorize": SECURITY_CATEGORIZE_PROMPT,
+            "synthesis": SECURITY_SYNTHESIS_PROMPT,
+            "cross_analysis": SECURITY_CROSS_CATEGORY_PROMPT,
+        }
+
+    return {
+        "categorize": CATEGORIZE_PROMPT,
+        "synthesis": CATEGORY_SYNTHESIS_PROMPT,
+        "cross_analysis": CROSS_CATEGORY_PROMPT,
+    }
 
 
 class Orchestrator:
@@ -55,24 +136,26 @@ class Orchestrator:
         self._output_folder: str = ""
         self.last_report_paths: dict[str, str] = {}
 
+        # Resolve the search profile
+        self._profile = get_profile(config.profile)
+        self._prompts = _get_prompts(self._profile)
+
+        # Build search tools from profile
+        self._search_tools = _build_search_tools(config, self._profile)
+
         # All tools (Principle 1: tools as unit of action)
         llm = make_llm_client(config)
-        self._search_tool = ScholarSearchTool()
-        self._search_tool.set_year_range(config.start_year, config.end_year)
-
-        # Scopus (Elsevier) runs as a second search pass alongside Scholar.
-        # config.scopus_api_key is resolved by __main__'s _setup_elsevier()
-        # before Orchestrator is constructed, so it always holds either the
-        # user's key or the bundled default (unless no_elsevier is True, in
-        # which case _run_search skips it entirely).
-        self._scopus_tool = ScopusSearchTool(api_key=config.scopus_api_key)
-        self._scopus_tool.set_year_range(config.start_year, config.end_year)
-
         self._enrichment_tool = EnrichmentTool()
         self._clarify_tool = ClarifyTool(llm=llm)
-        self._categorize_tool = CategorizeTool(llm=llm)
-        self._synthesize_tool = SynthesisTool(llm=llm)
-        self._cross_analysis_tool = CrossAnalysisTool(llm=llm)
+        self._categorize_tool = CategorizeTool(
+            llm=llm, prompt_template=self._prompts.get("categorize"),
+        )
+        self._synthesize_tool = SynthesisTool(
+            llm=llm, prompt_template=self._prompts.get("synthesis"),
+        )
+        self._cross_analysis_tool = CrossAnalysisTool(
+            llm=llm, prompt_template=self._prompts.get("cross_analysis"),
+        )
         self._fallback_tool = FallbackSynthesisTool(llm=llm)
         self._exec_summary_tool = ExecutiveSummaryTool(llm=llm)
 
@@ -129,11 +212,20 @@ class Orchestrator:
             border_style="blue",
         ))
 
+        # Show profile info
+        if self._profile.name != "default":
+            self.console.print(
+                f"  [dim]Profile: {self._profile.name} — {self._profile.description}[/dim]"
+            )
+
         state = PipelineState(query=query)
         self._output_folder = get_output_folder(query, self.config.output_dir)
 
         # Phase 1: Search
-        self.console.print("\n[bold blue]Phase 1: Searching Google Scholar + Scopus...[/bold blue]")
+        source_names = [t.name.replace("search_", "").replace("_", " ").title()
+                        for t in self._search_tools]
+        source_label = " + ".join(source_names) if source_names else "no sources"
+        self.console.print(f"\n[bold blue]Phase 1: Searching {source_label}...[/bold blue]")
         with self.console.status("[cyan]Searching academic databases…", spinner="dots"):
             state = self._run_search(state)
 
@@ -155,6 +247,10 @@ class Orchestrator:
 
         # Phase 3: Synthesize
         self.console.print(f"\n[bold blue]Phase 3: Synthesizing {len(state.papers)} papers...[/bold blue]")
+        if self._profile.prompt_style != "default":
+            self.console.print(
+                f"  [dim]Using {self._profile.prompt_style} prompt style[/dim]"
+            )
         with self.console.status("[cyan]Asking the model to read and write…", spinner="dots"):
             state = self._run_synthesis(state)
 
@@ -514,67 +610,58 @@ class Orchestrator:
     # ------------------------------------------------------------------
 
     def _run_search(self, state: PipelineState) -> PipelineState:
-        """Phase 1: Search Google Scholar and Scopus in parallel.
+        """Phase 1: Search all profile sources in parallel.
 
-        The two searches are independent HTTP calls so they fan out on a
-        small thread pool. Wall-clock for the search phase is now max(scholar,
-        scopus) instead of scholar + scopus, which on a typical run shaves
-        ~10-30s off the slowest source.
+        Fan out across a thread pool sized to the profile's max_search_workers.
+        Wall-clock = max(all sources) instead of sum(all sources).
         """
-        scopus_enabled = not self.config.no_elsevier
+        if not self._search_tools:
+            self.console.print("  [yellow]No search sources configured[/yellow]")
+            return state
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
-            scholar_future = pool.submit(
-                self._search_tool.safe_execute,
-                query=state.query,
-                cancel=self._cancel,
-            )
-            scopus_future = (
-                pool.submit(
-                    self._scopus_tool.safe_execute,
+        workers = min(len(self._search_tools), self._profile.max_search_workers)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+            future_to_name: dict[concurrent.futures.Future, str] = {}
+            for tool in self._search_tools:
+                future = pool.submit(
+                    tool.safe_execute,
                     query=state.query,
                     cancel=self._cancel,
                 )
-                if scopus_enabled
-                else None
-            )
+                future_to_name[future] = tool.name
 
-            try:
-                scholar_result = scholar_future.result()
-            except Exception as e:
-                logger.debug("Scholar search failed: %s", e)
-                from deep_researcher.models import ToolResult
-                scholar_result = ToolResult(text=f"Scholar error: {e}", papers=[])
+            papers: dict[str, Paper] = {}
+            source_counts: dict[str, int] = {}
 
-            scopus_result = None
-            if scopus_future is not None:
+            for future in concurrent.futures.as_completed(future_to_name):
+                tool_name = future_to_name[future]
+                display_name = tool_name.replace("search_", "").replace("_", " ").title()
                 try:
-                    scopus_result = scopus_future.result()
+                    result = future.result()
+                    new_count = 0
+                    for paper in result.papers:
+                        key = paper.unique_key
+                        if key not in papers:
+                            papers[key] = paper
+                            new_count += 1
+                        else:
+                            papers[key].merge(paper)
+                    source_counts[display_name] = new_count
                 except Exception as e:
-                    logger.debug("Scopus search failed: %s", e)
+                    logger.debug("%s search failed: %s", tool_name, e)
+                    source_counts[display_name] = 0
 
-        papers: dict[str, Paper] = {}
-        for paper in scholar_result.papers:
-            key = paper.unique_key
-            if key not in papers:
-                papers[key] = paper
-        scholar_count = len(papers)
-
-        new_from_scopus = 0
-        if scopus_result is not None:
-            for paper in scopus_result.papers:
-                key = paper.unique_key
-                if key not in papers:
-                    papers[key] = paper
-                    new_from_scopus += 1
-
-        if new_from_scopus:
-            self.console.print(
-                f"  [green]Found {scholar_count} papers on Scholar + "
-                f"{new_from_scopus} new on Scopus[/green]"
-            )
+        # Report per-source counts
+        parts = []
+        for name, count in source_counts.items():
+            if count > 0:
+                parts.append(f"{count} from {name}")
+        total = len(papers)
+        if parts:
+            self.console.print(f"  [green]Found {total} unique papers ({', '.join(parts)})[/green]")
         else:
-            self.console.print(f"  [green]Found {scholar_count} papers[/green]")
+            self.console.print(f"  [green]Found {total} papers[/green]")
 
         return state.evolve(papers=papers)
 
@@ -738,7 +825,7 @@ class Orchestrator:
 
         # Step 4: Assemble report (programmatic — not LLM)
         state = state.evolve(exec_summary=exec_summary_text)
-        report = _assemble_report(state)
+        report = _assemble_report(state, self._profile, self._search_tools)
         return state.evolve(report=report)
 
 
@@ -746,7 +833,11 @@ class Orchestrator:
 # Report assembly (pure function, no side effects)
 # ------------------------------------------------------------------
 
-def _assemble_report(state: PipelineState) -> str:
+def _assemble_report(
+    state: PipelineState,
+    profile: SearchProfile,
+    search_tools: list[Tool],
+) -> str:
     """Assemble the final report programmatically."""
     papers = state.synthesis_papers
     categories = state.categories or {}
@@ -757,12 +848,22 @@ def _assemble_report(state: PipelineState) -> str:
     yr_range = f"{min(years)}-{max(years)}" if years else "unknown"
     total = len(state.papers)
 
+    # Build source list for the coverage line
+    source_names = [t.name.replace("search_", "").replace("_", " ").title()
+                    for t in search_tools]
+    source_label = ", ".join(source_names) if source_names else "Google Scholar"
+
     has_doi = sum(1 for p in papers if p.doi)
+
+    profile_note = ""
+    if profile.name != "default":
+        profile_note = f" Profile: {profile.name}."
+
     parts = [
         f"### {state.query}\n",
         f"#### Coverage",
-        f"{total} papers found via Google Scholar, enriched via OpenAlex. "
-        f"Years {yr_range}. {has_doi} with DOIs.\n",
+        f"{total} papers found via {source_label}, enriched via OpenAlex. "
+        f"Years {yr_range}. {has_doi} with DOIs.{profile_note}\n",
         "#### Categories\n",
     ]
 

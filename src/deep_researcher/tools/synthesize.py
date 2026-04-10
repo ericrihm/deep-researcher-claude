@@ -26,8 +26,13 @@ class SynthesisTool(Tool):
     quality_tier = 1
     parameters = {"type": "object", "properties": {}, "required": []}
 
-    def __init__(self, llm: LLMClient | None = None) -> None:
+    def __init__(
+        self,
+        llm: LLMClient | None = None,
+        prompt_template: str | None = None,
+    ) -> None:
         self._llm = llm
+        self._prompt_template = prompt_template or CATEGORY_SYNTHESIS_PROMPT
 
     def execute(
         self,
@@ -41,7 +46,7 @@ class SynthesisTool(Tool):
             return ToolResult(text="No papers to synthesize")
 
         corpus = build_tiered_corpus(indexed_papers, token_budget=token_budget)
-        prompt = CATEGORY_SYNTHESIS_PROMPT.format(
+        prompt = self._prompt_template.format(
             query=query,
             category=category_name,
             count=len(indexed_papers),

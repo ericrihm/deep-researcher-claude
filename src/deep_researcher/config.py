@@ -41,6 +41,10 @@ class Config:
     # When True, skip the Elsevier/Scopus search pass entirely. Useful for
     # users who don't want any call to api.elsevier.com in their pipeline.
     no_elsevier: bool = False
+    # Search profile: controls which sources are queried and which prompt
+    # style is used for synthesis. "default" preserves original behavior.
+    # See profiles.py for available profiles.
+    profile: str = "default"
     # Selects which LLM client implementation make_llm_client returns.
     # "openai"        -> existing OpenAI-compatible LLMClient (Ollama, OpenAI, Groq, …)
     # "claude_agent"  -> claude_agent_sdk-backed client (OAuth via `claude login`)
