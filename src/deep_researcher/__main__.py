@@ -318,6 +318,12 @@ def main() -> None:
                              "(overrides ELSEVIER_API_KEY and config.json)")
     parser.add_argument("--no-elsevier", action="store_true",
                         help="Skip the Elsevier/Scopus search pass")
+    parser.add_argument("--profile", default=None,
+                        choices=["default", "security", "biomedical", "comprehensive"],
+                        help="Search source profile: 'default' (Scholar+Scopus), "
+                             "'security' (adds Semantic Scholar, arXiv, DBLP, IEEE), "
+                             "'biomedical' (adds PubMed), "
+                             "'comprehensive' (all sources)")
     parser.add_argument("--interactive", action="store_true", help="Ask clarifying questions before researching")
     parser.add_argument("--no-open", action="store_true", help="Do not auto-open the HTML report in a browser when done")
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
@@ -523,6 +529,8 @@ def main() -> None:
         config.end_year = args.end_year
     if args.interactive:
         config.interactive = True
+    if args.profile:
+        config.profile = args.profile
 
     _setup_elsevier(args, config, console)
 

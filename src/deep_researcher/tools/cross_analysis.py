@@ -23,8 +23,13 @@ class CrossAnalysisTool(Tool):
     quality_tier = 1
     parameters = {"type": "object", "properties": {}, "required": []}
 
-    def __init__(self, llm: LLMClient | None = None) -> None:
+    def __init__(
+        self,
+        llm: LLMClient | None = None,
+        prompt_template: str | None = None,
+    ) -> None:
         self._llm = llm
+        self._prompt_template = prompt_template or CROSS_CATEGORY_PROMPT
 
     def execute(
         self,
@@ -43,7 +48,7 @@ class CrossAnalysisTool(Tool):
                 summary = summary[:cut + 1] if cut > 300 else summary + "..."
             summaries.append(f"**{name}:**\n{summary}")
 
-        prompt = CROSS_CATEGORY_PROMPT.format(
+        prompt = self._prompt_template.format(
             query=query,
             category_summaries="\n\n".join(summaries),
         )

@@ -142,6 +142,131 @@ Example: "Which aspect matters most? (a) clinical trials  (b) computational mode
 Format: Return ONLY the 2 questions, one per line, numbered 1-2. No preamble.
 """
 
+# ---------------------------------------------------------------------------
+# Security-domain prompt variants
+# ---------------------------------------------------------------------------
+# Used when profile.prompt_style == "security". Same output format contracts
+# as the default prompts so downstream parsing is unaffected.
+
+SECURITY_CATEGORIZE_PROMPT = """\
+You are a security research analyst. Below are {count} papers on: "{query}"
+
+Assign each paper to exactly one category (3-6 categories). \
+Categorize by SECURITY-RELEVANT dimensions — vulnerability class, attack \
+surface, defensive technique, or analysis methodology. Do NOT categorize \
+by database, year, or generic CS topic.
+
+Good category examples:
+- "Memory Corruption in Protocol Parsers"
+- "Firmware Extraction and Emulation"
+- "Authentication Bypass Techniques"
+- "Fuzzing Methodology and Coverage"
+- "Patch Analysis and Variant Detection"
+- "Exploit Mitigation Effectiveness"
+
+## Papers
+{paper_list}
+
+## Output Format
+Return ONLY a list in this exact format (one line per category, paper numbers comma-separated):
+
+CATEGORY: Category Name
+PAPERS: 1, 5, 12, 23
+
+CATEGORY: Another Category
+PAPERS: 2, 7, 8, 19
+
+Rules:
+- Every paper number must appear in exactly one category
+- 3-6 categories total
+- Category names should be specific to the security domain
+- Category names must be noun phrases, NOT verbs or actions
+- Aim for similarly sized categories — avoid one category with 80% of papers and others with 2-3
+- No explanation needed — just the categories and paper numbers
+"""
+
+SECURITY_SYNTHESIS_PROMPT = """\
+You are a vulnerability researcher writing one section of a security-focused \
+literature review on: "{query}"
+
+This section covers the category: **{category}** ({count} papers)
+
+## Papers in this category
+{corpus}
+
+## Write this section for a practitioner audience. Reference papers by [number].
+
+**Attack surface / threat model:**
+Write a paragraph (3-5 sentences) describing what attack surface or threat \
+model this group of papers addresses. What is the target (firmware, protocol, \
+driver, web interface)? What is the attacker's position (network-adjacent, \
+local, remote unauthenticated)?
+
+**Techniques and tools:**
+Write a paragraph on the specific techniques, tools, and methodologies used. \
+Name specific tools (Ghidra, AFL, Boofuzz, angr, etc.) and approaches \
+(patch diffing, taint analysis, fuzzing, static analysis). Cite which \
+paper(s) used each.
+
+**Findings and CVEs:**
+Write a paragraph on discovered vulnerabilities, CVEs assigned, and severity. \
+Include specific CVE IDs, CVSS scores, and affected products ONLY if the \
+abstract explicitly states them. Do NOT infer or fabricate vulnerability details.
+
+**Defensive implications:**
+Write YOUR OWN analysis of what defenders should take away from this group. \
+What mitigations work? What gaps remain? This is your synthesis — do NOT \
+attribute these observations to specific papers with [number] citations.
+
+| Ref | Paper | Year | Target/Product | Technique | Key Finding | Citations |
+|-----|-------|------|----------------|-----------|-------------|-----------|
+(Include EVERY paper listed above. Sort by Year, newest first. \
+If a paper has no citation count, write "-" not "0".)
+
+## CRITICAL RULES
+- ONLY state what the abstracts explicitly say. If a CVE or metric is not in the abstract, do NOT invent it.
+- When citing [N], the claim MUST come from that paper's abstract above. Verify before writing.
+- The Defensive implications section is YOUR analysis — do NOT fake-attribute observations to papers.
+- Include ALL papers from this category in the table.
+- Write for a practitioner doing vulnerability research, not for an academic audience.
+- Be direct. No filler. No "In recent years..."
+- Do NOT write references or cross-category analysis — just this one section.
+"""
+
+SECURITY_CROSS_CATEGORY_PROMPT = """\
+You are a vulnerability researcher. You've categorized papers on "{query}" into these groups:
+
+{category_summaries}
+
+Now write ONLY these sections:
+
+#### Cross-Category Attack Chains
+What attack chains emerge when combining techniques from different categories? \
+For example, does a firmware extraction technique in one category enable the \
+fuzzing approach in another? Name at least 3 specific paper numbers when \
+discussing each chain.
+
+#### Gaps & Research Opportunities
+Be specific to security research. Name concrete vulnerability classes, \
+products, or protocols that haven't been studied. Point to missing tooling \
+or methodology gaps. For each gap, explain what a researcher would need to \
+close it — data, access, tooling, or technique.
+
+#### Practitioner Takeaways
+What should a working vulnerability researcher do differently after reading \
+this corpus? Name specific tools to adopt, techniques to try, or targets to \
+investigate. Be actionable.
+
+#### Open Access Papers
+List any papers with free full-text URLs mentioned above.
+
+Rules:
+- Be direct and specific — no vague generalities
+- Reference specific paper numbers when possible
+- Write for practitioners, not academics
+- Do NOT repeat the per-category analysis
+"""
+
 EXECUTIVE_SUMMARY_PROMPT = """\
 You are writing a 100-150 word executive summary for a literature review on: "{query}"
 
