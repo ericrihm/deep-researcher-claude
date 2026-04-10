@@ -18,7 +18,7 @@ from typing import Any
 
 logger = logging.getLogger("deep_researcher")
 
-STATE_PATH = Path.home() / ".deep-researcher" / "state.json"
+STATE_PATH = Path.home() / ".deep-researcher-claude" / "state.json"
 
 
 def load_state() -> dict[str, Any]:

@@ -5,7 +5,7 @@ Claude Code, and other MCP clients can perform academic research
 mid-conversation.
 
 Entry points:
-    deep-researcher-mcp          (console script)
+    deep-researcher-claude-mcp   (console script)
     python -m deep_researcher.mcp_server
 """
 from __future__ import annotations

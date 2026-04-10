@@ -34,7 +34,7 @@ def test_prompts_registered():
 
 
 def test_console_script_entry_point():
-    """The deep-researcher-mcp console script is configured in pyproject.toml."""
+    """The deep-researcher-claude-mcp console script is configured in pyproject.toml."""
     import importlib.metadata
     eps = importlib.metadata.entry_points()
     # In Python 3.12+, entry_points() returns a dict-like; in 3.10-3.11
@@ -44,4 +44,4 @@ def test_console_script_entry_point():
     else:
         scripts = eps.get("console_scripts", [])
     names = [ep.name for ep in scripts]
-    assert "deep-researcher-mcp" in names, f"Entry point not found. Available: {names}"
+    assert "deep-researcher-claude-mcp" in names, f"Entry point not found. Available: {names}"

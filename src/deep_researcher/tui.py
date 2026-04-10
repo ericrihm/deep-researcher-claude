@@ -409,7 +409,7 @@ def run(console: Console, providers: dict) -> Optional[tuple]:
                     console.print(
                         f"[red]Provider '{provider_name}' needs an API key.[/red] "
                         f"Set OPENAI_API_KEY in your environment, or edit "
-                        f"~/.deep-researcher/config.json, then restart."
+                        f"~/.deep-researcher-claude/config.json, then restart."
                     )
                     continue
             console.print()

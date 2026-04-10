@@ -41,7 +41,7 @@ Deep Researcher searches **Google Scholar** for academically-ranked papers, enri
 | **Interactive TUI** | Type a question in plain English — no shell quoting, no flags |
 | **Runs locally** | Use Ollama and your queries never leave your machine |
 | **Claude subscription** | `--provider claude` uses your `claude login` OAuth — no API key |
-| **MCP server** | `pip install deep-researcher[mcp]` — Claude Desktop and Claude Code can search papers and write reviews mid-conversation |
+| **MCP server** | `pip install deep-researcher-claude[mcp]` — Claude Desktop and Claude Code can search papers and write reviews mid-conversation |
 | **Agentic architecture** | Tool-based pipeline inspired by [Claude Code](https://github.com/anthropics/claude-code) |
 | **5 dependencies** | No LangChain, no framework soup |
 
@@ -93,7 +93,7 @@ Unicode works everywhere forever.
 Just run the command with no arguments:
 
 ```bash
-deep-researcher
+deep-researcher-claude
 ```
 
 You'll see something like this:
@@ -126,7 +126,7 @@ and deep-researcher gets to work. Your last query and settings are
 remembered between runs. Press **`q`** or **Ctrl-C** at any prompt
 to quit cleanly.
 
-If the `deep-researcher` command isn't on your PATH for any reason,
+If the `deep-researcher-claude` command isn't on your PATH for any reason,
 `python -m deep_researcher` works identically.
 
 #### Writing a good research question
@@ -210,21 +210,21 @@ type your question and press Enter.
 If you have a ChatGPT subscription, you can use it with no API key:
 
 ```bash
-deep-researcher --provider chatgpt "your query"
+deep-researcher-claude --provider chatgpt "your query"
 ```
 
 On first run, deep-researcher checks for an existing Codex CLI /
 ChatGPT-Local session on disk, then falls back to a one-time browser
 sign-in (PKCE OAuth). The token is cached to
-`~/.deep-researcher/chatgpt-auth.json` and refreshed automatically
+`~/.deep-researcher-claude/chatgpt-auth.json` and refreshed automatically
 before every API call.
 
 Manage the session:
 
 ```bash
-deep-researcher auth-chatgpt           # Browser sign-in
-deep-researcher auth-chatgpt --status  # Show which auth tier is active
-deep-researcher auth-chatgpt --logout  # Delete the stored token
+deep-researcher-claude auth-chatgpt           # Browser sign-in
+deep-researcher-claude auth-chatgpt --status  # Show which auth tier is active
+deep-researcher-claude auth-chatgpt --logout  # Delete the stored token
 ```
 
 > **Terms of service:** this uses your ChatGPT subscription via the same
@@ -239,7 +239,7 @@ deep-researcher auth-chatgpt --logout  # Delete the stored token
 Pass the question and flags directly, skipping the TUI:
 
 ```bash
-deep-researcher "chatbots for cognitive behavioral therapy" --provider claude --start-year 2020
+deep-researcher-claude "chatbots for cognitive behavioral therapy" --provider claude --start-year 2020
 ```
 
 ### Compare two providers side-by-side
@@ -247,7 +247,7 @@ deep-researcher "chatbots for cognitive behavioral therapy" --provider claude --
 Run search once, then synthesize with two different LLM providers in parallel. An LLM-generated comparison analysis highlights categorization differences, contradictions, citation patterns, and writing quality:
 
 ```bash
-deep-researcher "CRISPR gene editing" --compare claude openai
+deep-researcher-claude "CRISPR gene editing" --compare claude openai
 ```
 
 This produces a `compare.html` with synced-scroll columns and a structured comparison summary. Each provider's full report is also saved in its own subfolder. Replay also works on compare folders — re-running synthesis without re-searching.
@@ -261,7 +261,7 @@ Deep Researcher runs as an [MCP server](https://modelcontextprotocol.io) so Clau
 **Install with MCP support:**
 
 ```bash
-pip install -e ".[mcp]"
+pip install -e ".[mcp]"  # from the deep-researcher-claude repo
 ```
 
 **Claude Desktop** — add to `claude_desktop_config.json` (macOS: `~/Library/Application Support/Claude/`, Windows: `%APPDATA%/Claude/`):
@@ -269,8 +269,8 @@ pip install -e ".[mcp]"
 ```json
 {
   "mcpServers": {
-    "deep-researcher": {
-      "command": "deep-researcher-mcp"
+    "deep-researcher-claude": {
+      "command": "deep-researcher-claude-mcp"
     }
   }
 }
@@ -281,14 +281,14 @@ pip install -e ".[mcp]"
 ```json
 {
   "mcpServers": {
-    "deep-researcher": {
-      "command": "deep-researcher-mcp"
+    "deep-researcher-claude": {
+      "command": "deep-researcher-claude-mcp"
     }
   }
 }
 ```
 
-Restart Claude after editing the config. You should see "deep-researcher" in your available tools.
+Restart Claude after editing the config. You should see "deep-researcher-claude" in your available tools.
 
 **What Claude can do with it:**
 
@@ -325,15 +325,15 @@ Restart Claude after editing the config. You should see "deep-researcher" in you
 >
 > **Claude:** *[calls research with provider="claude"]* Here's the structured review with 6 categories...
 
-The MCP server uses the same config chain as the CLI (env vars, `~/.deep-researcher/config.json`). If you use `--provider claude`, make sure you've run `claude login` first.
+The MCP server uses the same config chain as the CLI (env vars, `~/.deep-researcher-claude/config.json`). If you use `--provider claude`, make sure you've run `claude login` first.
 
 ### Run with Ollama (local, free, private)
 
 ```bash
 ollama pull qwen3.5:9b
-deep-researcher                       # TUI, pick "ollama" in the provider menu
+deep-researcher-claude                       # TUI, pick "ollama" in the provider menu
 # or one-shot:
-deep-researcher "your research question" --provider ollama
+deep-researcher-claude "your research question" --provider ollama
 ```
 
 ### Run with a cloud API provider
@@ -345,21 +345,21 @@ across providers — `--provider` picks which endpoint it's sent to).
 
 ```bash
 export OPENAI_API_KEY="sk-..."
-deep-researcher "machine learning for drug discovery" --provider openai
+deep-researcher-claude "machine learning for drug discovery" --provider openai
 ```
 
 **Windows (PowerShell):**
 
 ```powershell
 $env:OPENAI_API_KEY = "sk-..."
-deep-researcher "machine learning for drug discovery" --provider openai
+deep-researcher-claude "machine learning for drug discovery" --provider openai
 ```
 
 Other providers work the same way — just change the key and `--provider`:
 
 ```bash
-deep-researcher "CRISPR gene editing" --provider groq        # Groq (free tier)
-deep-researcher "quantum computing algorithms" --provider deepseek
+deep-researcher-claude "CRISPR gene editing" --provider groq        # Groq (free tier)
+deep-researcher-claude "quantum computing algorithms" --provider deepseek
 ```
 
 <details>
@@ -431,7 +431,7 @@ Every run writes a **self-contained `report.html`** into the output folder and o
 Don't want the auto-open? Pass `--no-open`:
 
 ```bash
-deep-researcher "your query" --provider claude --no-open
+deep-researcher-claude "your query" --provider claude --no-open
 ```
 
 ---
@@ -582,9 +582,9 @@ or those with legacy data environments.
 ## Usage
 
 ```
-deep-researcher                           # launch the interactive TUI
-deep-researcher "your research question"  # one-shot with a query
-deep-researcher "your query" [options]
+deep-researcher-claude                           # launch the interactive TUI
+deep-researcher-claude "your research question"  # one-shot with a query
+deep-researcher-claude "your query" [options]
 
 Options:
   --provider PROVIDER          LLM provider (ollama, claude, openai, groq, etc.)
@@ -608,29 +608,29 @@ Options:
 
 ```bash
 # Recent papers only
-deep-researcher "federated learning" --start-year 2020
+deep-researcher-claude "federated learning" --start-year 2020
 
 # Specific time window
-deep-researcher "attention mechanisms" --start-year 2017 --end-year 2023
+deep-researcher-claude "attention mechanisms" --start-year 2017 --end-year 2023
 
 # Interactive mode — refine your question first
-deep-researcher "machine learning in healthcare" --interactive
+deep-researcher-claude "machine learning in healthcare" --interactive
 
 # Cloud provider for faster synthesis
-deep-researcher "quantum computing" --provider groq --start-year 2022
+deep-researcher-claude "quantum computing" --provider groq --start-year 2022
 
 # Compare two providers side-by-side
-deep-researcher "CRISPR gene editing" --compare claude openai
+deep-researcher-claude "CRISPR gene editing" --compare claude openai
 
 # Re-run synthesis with a different model (no re-searching)
-deep-researcher --replay output/2026-04-09-161823-crispr-gene-editing --provider groq
+deep-researcher-claude --replay output/2026-04-09-161823-crispr-gene-editing --provider groq
 ```
 
 ---
 
 ## Configuration
 
-Create `~/.deep-researcher/config.json`:
+Create `~/.deep-researcher-claude/config.json`:
 
 ```json
 {
@@ -661,13 +661,13 @@ Override the bundled default in any of three ways:
 
 ```bash
 # 1. CLI flag (highest precedence)
-deep-researcher "your query" --elsevier-key YOUR_KEY
+deep-researcher-claude "your query" --elsevier-key YOUR_KEY
 
 # 2. Environment variable
 export ELSEVIER_API_KEY=YOUR_KEY
 
 # 3. config.json
-echo '{"scopus_api_key": "YOUR_KEY"}' > ~/.deep-researcher/config.json
+echo '{"scopus_api_key": "YOUR_KEY"}' > ~/.deep-researcher-claude/config.json
 ```
 
 Skip Elsevier entirely with `--no-elsevier`.
@@ -695,7 +695,7 @@ The LLM is only used for **synthesis** (categorization and writing). Search is h
 Any OpenAI-compatible model works. Use `--model` to override the default:
 
 ```bash
-deep-researcher "your query" --model gemma4
+deep-researcher-claude "your query" --model gemma4
 ```
 
 | Model | ID | Notes |
@@ -712,7 +712,7 @@ deep-researcher "your query" --model gemma4
 
 ### 0.9.0
 
-- **New: MCP server.** `pip install deep-researcher[mcp]` and add a one-line config to Claude Desktop or Claude Code. Five tools (`research`, `search_papers`, `synthesize`, `compare`, `list_runs`), three resources for reading past runs, and two pre-built prompts for guided workflows. Claude can now search papers and write literature reviews mid-conversation.
+- **New: MCP server.** `pip install deep-researcher-claude[mcp]` and add a one-line config to Claude Desktop or Claude Code. Five tools (`research`, `search_papers`, `synthesize`, `compare`, `list_runs`), three resources for reading past runs, and two pre-built prompts for guided workflows. Claude can now search papers and write literature reviews mid-conversation.
 - **New: Dual-provider comparison.** `--compare claude openai` runs search once, synthesizes with both LLMs in parallel, then generates a structured comparison analysis. Produces a `compare.html` with synced-scroll side-by-side columns. Also available via the TUI's **c** hotkey.
 - **New: Compare replay.** Re-run dual-provider synthesis on an existing compare folder without re-searching. Auto-detected by `--replay` when the folder has `mode: "compare"` in metadata.json.
 
@@ -727,7 +727,7 @@ deep-researcher "your query" --model gemma4
 
 - **New: Executive summary.** Every HTML report now opens with a 100-150 word LLM-written TL;DR paragraph, generated in parallel with the per-category synthesis so it adds no wall-clock time. HTML-only; the Markdown report is unchanged.
 - **New: Inline SVG charts.** A collapsible "At a glance" block above the report body shows a year histogram, a per-category bar chart, and a sources donut. Pure SVG + CSS, theme-aware, print-friendly, zero new dependencies.
-- **New: Replay mode.** Re-run synthesis on an existing output folder without re-searching: `deep-researcher --replay output/2026-04-08-crispr-off-targets`, or pick "r" from the TUI menu. Outputs are versioned (`report-2.md`, `report-2.html`) so prior runs are preserved.
+- **New: Replay mode.** Re-run synthesis on an existing output folder without re-searching: `deep-researcher-claude --replay output/2026-04-08-crispr-off-targets`, or pick "r" from the TUI menu. Outputs are versioned (`report-2.md`, `report-2.html`) so prior runs are preserved.
 
 ### 0.6.0
 
