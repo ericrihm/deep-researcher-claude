@@ -412,8 +412,8 @@ class Orchestrator:
             prov_orch._cancel = self._cancel
             prov_orch._output_folder = self._output_folder
             prov_orch.last_report_paths = {}
-            prov_orch._search_tool = self._search_tool
-            prov_orch._scopus_tool = self._scopus_tool
+            prov_orch._search_tools = self._search_tools
+            prov_orch._profile = self._profile
             prov_orch._enrichment_tool = self._enrichment_tool
             prov_orch._clarify_tool = ClarifyTool(llm=prov_llm)
             prov_orch._categorize_tool = CategorizeTool(llm=prov_llm)
