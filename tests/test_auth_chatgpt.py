@@ -92,14 +92,14 @@ def test_stored_auth_path_is_under_deep_researcher(tmp_path, monkeypatch):
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
     p = _stored_auth_path()
     assert p.name == "chatgpt-auth.json"
-    assert ".deep-researcher" in str(p)
+    assert ".deep-researcher-claude" in str(p)
 
 
 def test_tier2_reads_stored_token(tmp_path, monkeypatch):
     from deep_researcher.auth_chatgpt import _try_stored_token
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
-    f = tmp_path / ".deep-researcher" / "chatgpt-auth.json"
+    f = tmp_path / ".deep-researcher-claude" / "chatgpt-auth.json"
     _write_auth_file(f)
     auth = _try_stored_token()
     assert auth is not None and auth.access_token == "tok"
@@ -109,7 +109,7 @@ def test_save_auth_file_creates_directory_and_writes_atomically(tmp_path, monkey
     from deep_researcher.auth_chatgpt import _save_auth_file
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
-    target = tmp_path / ".deep-researcher" / "chatgpt-auth.json"
+    target = tmp_path / ".deep-researcher-claude" / "chatgpt-auth.json"
     _save_auth_file(target, {
         "access_token": "new",
         "refresh_token": "newref",
@@ -181,7 +181,7 @@ def test_resolve_falls_through_to_stored_when_no_codex(tmp_path, monkeypatch):
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
     monkeypatch.delenv("CODEX_HOME", raising=False)
     monkeypatch.delenv("CHATGPT_LOCAL_HOME", raising=False)
-    stored = tmp_path / ".deep-researcher" / "chatgpt-auth.json"
+    stored = tmp_path / ".deep-researcher-claude" / "chatgpt-auth.json"
     _write_auth_file(stored, access="stored-tok")
     from rich.console import Console
     auth = resolve_chatgpt_auth(Console(quiet=True), verbose=False, allow_browser=False)

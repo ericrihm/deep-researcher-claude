@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 
 CONFIG_LOCATIONS = [
-    os.path.expanduser("~/.deep-researcher/config.json"),
+    os.path.expanduser("~/.deep-researcher-claude/config.json"),
     "./deep-researcher.json",
 ]
 

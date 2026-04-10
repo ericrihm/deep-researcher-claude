@@ -1,7 +1,7 @@
 """ChatGPT OAuth four-tier auth resolution.
 
 Tier 1: reuse a Codex CLI / ChatGPT-Local auth.json on disk
-Tier 2: reuse our own stored token at ~/.deep-researcher/chatgpt-auth.json
+Tier 2: reuse our own stored token at ~/.deep-researcher-claude/chatgpt-auth.json
 Tier 3: PKCE browser login (writes to Tier 2 location for next time)
 Tier 4: fall back to OPENAI_API_KEY against api.openai.com (handled by caller)
 
@@ -113,7 +113,7 @@ def _try_codex_files() -> Optional[ChatGPTAuth]:
 
 
 def _stored_auth_path() -> Path:
-    return _home() / ".deep-researcher" / "chatgpt-auth.json"
+    return _home() / ".deep-researcher-claude" / "chatgpt-auth.json"
 
 
 def _try_stored_token() -> Optional[ChatGPTAuth]:

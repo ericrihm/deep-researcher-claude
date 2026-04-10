@@ -141,7 +141,7 @@ def _setup_chatgpt_provider(
 
     Four-tier resolution:
     1. Existing Codex CLI / ChatGPT-Local auth.json
-    2. Our own cached token at ~/.deep-researcher/chatgpt-auth.json
+    2. Our own cached token at ~/.deep-researcher-claude/chatgpt-auth.json
     3. PKCE browser sign-in (writes to tier 2 for next time)
     4. Fallback: OPENAI_API_KEY against api.openai.com (if tiers 1-3 fail)
     """
